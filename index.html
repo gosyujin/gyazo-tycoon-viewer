@@ -67,7 +67,7 @@ const LS=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
 const LSset=(k,v)=>{try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}};
 const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const REDIR=location.origin+location.pathname;
-const SCOPE='files.content.read';
+const SCOPE='files.content.read files.content.write';  // write は閲覧履歴(/index/visits/<端末ID>.json)の送信にだけ使う
 const b64u=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 
 // ---- 認可 (PKCE) ----
@@ -149,8 +149,28 @@ const visits=(()=>{try{return JSON.parse(LS(VISITS_KEY)||'{}')}catch(e){return {
 let visitTimer;
 function recordVisit(id){
   const v=visits[id]||{t:0,n:0};visits[id]={t:Date.now(),n:v.n+1};
+  visitsDirty=true;
   clearTimeout(visitTimer);visitTimer=setTimeout(()=>LSset(VISITS_KEY,JSON.stringify(visits)),300);
 }
+// 閲覧履歴を Dropbox へ送る(スマホ→Mac。Mac の gyazo-tycoon が /index/visits/ を取り込んで閲覧数に足す)。
+// 端末ごとの「累計」を上書き保存するだけなので、再送しても二重に数えられない。
+let visitsDirty=Object.keys(visits).length>0,visitsErr='';  // 起動時に既存の履歴も一度送る
+const DEVICE=(()=>{let d=LS('gt_device');if(!/^[0-9a-f]{16}$/.test(d||'')){d=[...crypto.getRandomValues(new Uint8Array(8))].map(b=>b.toString(16).padStart(2,'0')).join('');LSset('gt_device',d)}return d})();
+async function flushVisits(){
+  if(!visitsDirty)return;
+  visitsDirty=false;
+  const out={};for(const[id,v]of Object.entries(visits))out[id]=[v.n,v.t];
+  try{
+    const r=await fetch('https://content.dropboxapi.com/2/files/upload',{method:'POST',headers:{Authorization:'Bearer '+await token(),
+      'Dropbox-API-Arg':JSON.stringify({path:`/index/visits/${DEVICE}.json`,mode:'overwrite',mute:true}),'Content-Type':'application/octet-stream'},
+      body:JSON.stringify({v:1,device:DEVICE,updated:Date.now(),visits:out})});
+    if(!r.ok)throw new Error(r.status===401||r.status===403?'scope':'upload '+r.status);
+    visitsErr='';
+  }catch(e){visitsDirty=true;visitsErr=e.message==='scope'?'閲覧履歴の送信には再認可が必要です(⏏で認可を消して、もう一度認可)':'閲覧履歴の送信に失敗(再試行します)'}
+  showBuild();
+}
+setInterval(flushVisits,60000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushVisits()});
 
 // ---- 一覧 ----
 let items=[],shown=0,filtered=[];
@@ -233,7 +253,7 @@ async function openLb(k){
   }catch(e){console.warn(e);if(tok===lbTok)$('#lbm').className='failed'}
 }
 $('#grid').addEventListener('click',e=>{const t=e.target.closest('.tile');if(t)openLb(+t.dataset.k)});
-const closeLb=()=>{lbTok++;$('#lbm').className='';cur=-1;$('#lb').classList.remove('on');$('#lbm').innerHTML=''};
+const closeLb=()=>{flushVisits();lbTok++;$('#lbm').className='';cur=-1;$('#lb').classList.remove('on');$('#lbm').innerHTML=''};
 $('#lbx').onclick=closeLb;
 function step(d){
   const k=cur+d;if(cur<0||k<0||k>=filtered.length)return;
@@ -272,7 +292,12 @@ async function loadIndex(){
   }
   applyFilter();
 }
-if(window.BUILD_INFO)$('#build').textContent=`build ${BUILD_INFO.sha} (${BUILD_INFO.time})`;
+function showBuild(){
+  const t=window.BUILD_INFO?`build ${BUILD_INFO.sha} (${BUILD_INFO.time})`:'';
+  $('#build').textContent=t;
+  if(visitsErr){const d=document.createElement('div');d.style.color='#ff8a8a';d.textContent=visitsErr;$('#build').append(d)}
+}
+showBuild();
 $('#login').onclick=startLogin;
 $('#out').onclick=()=>{if(confirm('この端末の認可を消しますか?')){['gt_refresh','gt_key'].forEach(k=>LSset(k,null));location.reload()}};
 (async()=>{
