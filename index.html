@@ -30,6 +30,11 @@ button{cursor:pointer}
 #lbi{height:25vh;overflow:auto;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--panel);font-size:12px}
 #lbi a{color:var(--accent);word-break:break-all}
 #lbi pre{white-space:pre-wrap;word-break:break-all;color:var(--dim);margin:6px 0 0}
+#lbm{position:relative}
+#lbm.loading img,#lbm.failed img{filter:blur(3px) brightness(.7);-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}  /* 荒いサムネイルは保存できないようにする */
+#lbm.loading::after{content:"";position:absolute;top:50%;left:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border:4px solid #fff5;border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;pointer-events:none}
+#lbm.failed::after{content:"読み込み失敗";position:absolute;top:50%;left:0;right:0;text-align:center;color:#ff8a8a;pointer-events:none}
+@keyframes spin{to{transform:rotate(360deg)}}
 #build{padding:16px 12px calc(16px + env(safe-area-inset-bottom));text-align:center;color:var(--dim);font-size:11px}
 #lbx{position:absolute;top:8px;right:8px;z-index:2;font-size:18px}
 </style>
@@ -164,6 +169,7 @@ let cur=-1,lbTok=0;
 async function openLb(k){
   const it=filtered[k],lb=$('#lb'),tok=++lbTok;cur=k;
   lb.classList.add('on');
+  $('#lbm').className='loading';
   $('#lbm').innerHTML='<img alt="" src="'+(thumbCache.get(it.i)||'')+'">';
   const meta=[it.t,it.s,it.ti&&esc(it.ti),it.g&&esc(it.g)].filter(Boolean).join(' / ');
   $('#lbi').innerHTML=`<div>${meta}</div>`+(it.u?`<div><a href="${esc(it.u)}" target="_blank" rel="noopener">${esc(it.u)}</a></div>`:'')
@@ -173,11 +179,11 @@ async function openLb(k){
     // 先に読み込み・デコードを済ませてから差し替える(読み込み中はサムネイルのまま)
     const im=new Image();im.src=j.link;
     await im.decode();
-    if(lb.classList.contains('on')&&tok===lbTok){const t=$('#lbm img');if(t)t.src=j.link}
-  }catch(e){console.warn(e)}
+    if(lb.classList.contains('on')&&tok===lbTok){const t=$('#lbm img');if(t)t.src=j.link;$('#lbm').className=''}
+  }catch(e){console.warn(e);if(tok===lbTok)$('#lbm').className='failed'}
 }
 $('#grid').addEventListener('click',e=>{const t=e.target.closest('.tile');if(t)openLb(+t.dataset.k)});
-const closeLb=()=>{lbTok++;cur=-1;$('#lb').classList.remove('on');$('#lbm').innerHTML=''};
+const closeLb=()=>{lbTok++;$('#lbm').className='';cur=-1;$('#lb').classList.remove('on');$('#lbm').innerHTML=''};
 $('#lbx').onclick=closeLb;
 function step(d){
   const k=cur+d;if(cur<0||k<0||k>=filtered.length)return;
