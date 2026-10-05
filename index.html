@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>gyazo-tycoon</title>
+<style>
+:root{--bg:#3d424c;--panel:#474d58;--line:#5d6471;--fg:#f0f2f5;--dim:#b4bac6;--accent:#7db2ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"Hiragino Sans",sans-serif;min-height:100vh}
+header{position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+input,button{background:#555c69;color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:6px 10px;font:inherit}
+button{cursor:pointer}
+#q{flex:1;min-width:0}
+#stat{color:var(--dim);font-size:12px;white-space:nowrap}
+#grid{padding:10px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}
+.tile{position:relative;aspect-ratio:1;background:#2f333b;border-radius:6px;overflow:hidden;cursor:pointer}
+.tile img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.tile .d{position:absolute;bottom:0;left:0;right:0;font-size:10px;background:#000a;padding:0 4px;color:#ddd}
+.msg{padding:40px 16px;text-align:center;color:var(--dim);grid-column:1/-1}
+#setup{max-width:480px;margin:40px auto;padding:0 16px;display:flex;flex-direction:column;gap:12px}
+#setup[hidden],#app[hidden]{display:none}
+#setup code{background:#2f333b;padding:0 4px;border-radius:3px;word-break:break-all}
+#lb{position:fixed;inset:0;background:#000e;display:none;z-index:9;flex-direction:column}
+#lb.on{display:flex}
+#lbm{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+#lbm img{max-width:100%;max-height:100%}
+#lbi{max-height:34vh;overflow:auto;padding:10px 14px;background:var(--panel);font-size:12px}
+#lbi a{color:var(--accent);word-break:break-all}
+#lbi pre{white-space:pre-wrap;word-break:break-all;color:var(--dim);margin:6px 0 0}
+#lbx{position:absolute;top:8px;right:8px;z-index:2;font-size:18px}
+</style>
+</head>
+<body>
+<div id="setup" hidden>
+  <h2>gyazo-tycoon</h2>
+  <p>Dropbox アプリの App key を入力して認可します(この端末の localStorage にだけ保存。読み取り権限のみ要求)。</p>
+  <p>このページのURL <code id="redir"></code> を、Dropbox アプリの Redirect URIs に登録しておいてください。</p>
+  <input id="key" placeholder="App key" autocomplete="off" autocapitalize="off">
+  <button id="login">Dropbox で認可する</button>
+  <p id="err" style="color:#ff8a8a"></p>
+</div>
+<div id="app" hidden>
+  <header>
+    <input id="q" type="search" placeholder="検索(スペースでAND)・ソース・タイトル・OCR冒頭・メモ">
+    <span id="stat"></span>
+    <button id="out" title="この端末の認可を消す">⏏</button>
+  </header>
+  <div id="grid"></div>
+</div>
+<div id="lb"><button id="lbx">✕</button><div id="lbm"></div><div id="lbi"></div></div>
+<script>
+const $=s=>document.querySelector(s);
+const LS=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+const LSset=(k,v)=>{try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}};
+const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const REDIR=location.origin+location.pathname;
+const SCOPE='files.content.read';
+const b64u=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+
+// ---- 認可 (PKCE) ----
+async function startLogin(){
+  const key=$('#key').value.trim(); if(!key){$('#err').textContent='App key を入力してください';return}
+  LSset('gt_key',key);
+  const ver=b64u(crypto.getRandomValues(new Uint8Array(48))), state=b64u(crypto.getRandomValues(new Uint8Array(12)));
+  const ch=b64u(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(ver)));
+  LSset('gt_ver',ver); LSset('gt_state',state);
+  location.href='https://www.dropbox.com/oauth2/authorize?'+new URLSearchParams({client_id:key,response_type:'code',
+    code_challenge:ch,code_challenge_method:'S256',token_access_type:'offline',scope:SCOPE,redirect_uri:REDIR,state});
+}
+async function tokenReq(params){
+  const r=await fetch('https://api.dropboxapi.com/oauth2/token',{method:'POST',body:new URLSearchParams(params)});
+  if(!r.ok)throw new Error('token '+r.status+' '+(await r.text()).slice(0,150));
+  return r.json();
+}
+let access=null,expires=0;
+async function token(){
+  if(access&&Date.now()<expires-60000)return access;
+  const j=await tokenReq({grant_type:'refresh_token',refresh_token:LS('gt_refresh'),client_id:LS('gt_key')});
+  access=j.access_token;expires=Date.now()+j.expires_in*1000;return access;
+}
+async function finishLogin(code,state){
+  if(state!==LS('gt_state'))throw new Error('state が一致しません');
+  const j=await tokenReq({grant_type:'authorization_code',code,code_verifier:LS('gt_ver'),client_id:LS('gt_key'),redirect_uri:REDIR});
+  LSset('gt_refresh',j.refresh_token);LSset('gt_ver',null);LSset('gt_state',null);
+  access=j.access_token;expires=Date.now()+j.expires_in*1000;
+}
+
+// ---- Dropbox 呼び出し ----
+async function rpc(host,ep,arg){
+  const r=await fetch('https://'+host+'/2/'+ep,{method:'POST',headers:{Authorization:'Bearer '+await token(),'Content-Type':'application/json'},body:JSON.stringify(arg)});
+  if(!r.ok)throw new Error(ep+' '+r.status);
+  return r.json();
+}
+async function download(path){
+  const r=await fetch('https://content.dropboxapi.com/2/files/download',{method:'POST',headers:{Authorization:'Bearer '+await token(),'Dropbox-API-Arg':JSON.stringify({path})}});
+  if(!r.ok)throw new Error('download '+path+' '+r.status);
+  return r.json();
+}
+const imgPath=it=>`/public/${it.i.slice(0,2)}/${it.i}.${it.e}`;
+
+// ---- サムネイル: 25枚ずつ get_thumbnail_batch ----
+const thumbQ=[],thumbBusy={v:false},thumbCache=new Map();
+function wantThumb(img){thumbQ.push(img);pump()}
+async function pump(){
+  if(thumbBusy.v)return;thumbBusy.v=true;
+  try{while(thumbQ.length){
+    const batch=thumbQ.splice(0,25).filter(i=>i.isConnected);
+    const todo=batch.filter(i=>{const c=thumbCache.get(i.dataset.id);if(c){i.src=c;return false}return true});
+    if(!todo.length)continue;
+    try{
+      const j=await rpc('content.dropboxapi.com','files/get_thumbnail_batch',{entries:todo.map(i=>({path:i.dataset.path,format:'jpeg',size:'w256h256',mode:'bestfit'}))});
+      j.entries.forEach((e,k)=>{if(e['.tag']==='success'){const u='data:image/jpeg;base64,'+e.thumbnail;thumbCache.set(todo[k].dataset.id,u);todo[k].src=u}});
+    }catch(e){console.warn(e)}
+  }}finally{thumbBusy.v=false}
+}
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){io.unobserve(e.target);wantThumb(e.target)}}),{rootMargin:'400px'});
+
+// ---- 一覧 ----
+let items=[],shown=0,filtered=[];
+const PAGE=120;
+const hay=it=>(it._h??=[it.s,it.ti,it.g,it.b,it.n,it.u,it.t].filter(Boolean).join(' ').toLowerCase());
+function applyFilter(){
+  const terms=$('#q').value.toLowerCase().split(/\s+/).filter(Boolean);
+  filtered=terms.length?items.filter(it=>terms.every(t=>hay(it).includes(t))):items;
+  $('#grid').innerHTML='';shown=0;more();
+  $('#stat').textContent=filtered.length.toLocaleString()+' 枚';
+  if(!filtered.length)$('#grid').innerHTML='<div class="msg">該当なし</div>';
+}
+function more(){
+  const g=$('#grid'),end=Math.min(shown+PAGE,filtered.length);
+  const html=[];
+  for(let k=shown;k<end;k++){const it=filtered[k];
+    html.push(`<div class="tile" data-k="${k}"><img data-id="${it.i}" data-path="${esc(imgPath(it))}" alt=""><div class="d">${esc(it.t.slice(0,16))}</div></div>`)}
+  g.insertAdjacentHTML('beforeend',html.join(''));
+  g.querySelectorAll('img:not([data-o])').forEach(i=>{i.dataset.o=1;io.observe(i)});
+  shown=end;
+}
+addEventListener('scroll',()=>{if(shown<filtered.length&&innerHeight+scrollY>document.body.scrollHeight-800)more()});
+$('#q').addEventListener('input',()=>{clearTimeout($('#q')._t);$('#q')._t=setTimeout(applyFilter,150)});
+
+// ---- 拡大 ----
+async function openLb(k){
+  const it=filtered[k],lb=$('#lb');
+  lb.classList.add('on');
+  $('#lbm').innerHTML='<img alt="" src="'+(thumbCache.get(it.i)||'')+'">';
+  const meta=[it.t,it.s,it.ti&&esc(it.ti),it.g&&esc(it.g)].filter(Boolean).join(' / ');
+  $('#lbi').innerHTML=`<div>${meta}</div>`+(it.u?`<div><a href="${esc(it.u)}" target="_blank" rel="noopener">${esc(it.u)}</a></div>`:'')
+    +(it.n?`<pre>${esc(it.n)}</pre>`:'')+(it.b?`<pre>${esc(it.b)}</pre>`:'');
+  try{
+    const j=await rpc('api.dropboxapi.com','files/get_temporary_link',{path:imgPath(it)});
+    if(lb.classList.contains('on'))$('#lbm').innerHTML=`<img alt="" src="${j.link}">`;
+  }catch(e){console.warn(e)}
+}
+$('#grid').addEventListener('click',e=>{const t=e.target.closest('.tile');if(t)openLb(+t.dataset.k)});
+$('#lbx').onclick=()=>{$('#lb').classList.remove('on');$('#lbm').innerHTML=''};
+addEventListener('keydown',e=>{if(e.key==='Escape')$('#lbx').click()});
+
+// ---- 起動 ----
+async function loadIndex(){
+  $('#grid').innerHTML='<div class="msg">読み込み中…</div>';
+  const man=await download('/index/manifest.json');
+  const all=[];
+  // 新しい月から順に読み、1か月ごとに表示を更新
+  for(const m of man.months){
+    const arr=await download(`/index/${m.m}.json`);
+    all.push(...arr);items=all.slice();
+    if(all.length===arr.length||all.length<=PAGE*2)applyFilter();
+    else $('#stat').textContent=items.length.toLocaleString()+' 枚…';
+  }
+  applyFilter();
+}
+$('#login').onclick=startLogin;
+$('#out').onclick=()=>{if(confirm('この端末の認可を消しますか?')){['gt_refresh','gt_key'].forEach(k=>LSset(k,null));location.reload()}};
+(async()=>{
+  $('#redir').textContent=REDIR;$('#key').value=LS('gt_key')||'';
+  const p=new URLSearchParams(location.search);
+  try{
+    if(p.get('code')){await finishLogin(p.get('code'),p.get('state'));history.replaceState(null,'',REDIR)}
+    else if(p.get('error')){history.replaceState(null,'',REDIR);throw new Error(p.get('error_description')||p.get('error'))}
+    if(!LS('gt_refresh')){$('#setup').hidden=false;return}
+    $('#app').hidden=false;
+    await loadIndex();
+  }catch(e){
+    $('#err').textContent=String(e.message||e);
+    if(LS('gt_refresh')&&!$('#app').hidden)$('#grid').innerHTML='<div class="msg">読み込み失敗: '+esc(e.message||e)+'</div>';
+    else $('#setup').hidden=false;
+  }
+})();
+</script>
+</body>
+</html>
