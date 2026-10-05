@@ -2,16 +2,18 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <title>gyazo-tycoon</title>
 <style>
 :root{--bg:#3d424c;--panel:#474d58;--line:#5d6471;--fg:#f0f2f5;--dim:#b4bac6;--accent:#7db2ff}
 *{box-sizing:border-box}
+html,body{overflow-x:hidden;max-width:100%}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"Hiragino Sans",sans-serif;min-height:100vh}
 header{position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
 input,button{background:#555c69;color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:6px 10px;font:inherit}
+input{font-size:16px}  /* 16px未満だとiOSがフォーカス時にズームする */
 button{cursor:pointer}
-#q{flex:1;min-width:0}
+#q{flex:1;min-width:0;width:0}
 #stat{color:var(--dim);font-size:12px;white-space:nowrap}
 #grid{padding:10px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}
 .tile{position:relative;aspect-ratio:1;background:#2f333b;border-radius:6px;overflow:hidden;cursor:pointer}
@@ -23,9 +25,9 @@ button{cursor:pointer}
 #setup code{background:#2f333b;padding:0 4px;border-radius:3px;word-break:break-all}
 #lb{position:fixed;inset:0;background:#000e;display:none;z-index:9;flex-direction:column}
 #lb.on{display:flex}
-#lbm{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+#lbm{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;touch-action:pan-y}
 #lbm img{max-width:100%;max-height:100%}
-#lbi{max-height:34vh;overflow:auto;padding:10px 14px;background:var(--panel);font-size:12px}
+#lbi{height:45vh;overflow:auto;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--panel);font-size:12px}
 #lbi a{color:var(--accent);word-break:break-all}
 #lbi pre{white-space:pre-wrap;word-break:break-all;color:var(--dim);margin:6px 0 0}
 #lbx{position:absolute;top:8px;right:8px;z-index:2;font-size:18px}
@@ -42,7 +44,7 @@ button{cursor:pointer}
 </div>
 <div id="app" hidden>
   <header>
-    <input id="q" type="search" placeholder="検索(スペースでAND)・ソース・タイトル・OCR冒頭・メモ">
+    <input id="q" type="search" placeholder="検索">
     <span id="stat"></span>
     <button id="out" title="この端末の認可を消す">⏏</button>
   </header>
@@ -140,8 +142,9 @@ addEventListener('scroll',()=>{if(shown<filtered.length&&innerHeight+scrollY>doc
 $('#q').addEventListener('input',()=>{clearTimeout($('#q')._t);$('#q')._t=setTimeout(applyFilter,150)});
 
 // ---- 拡大 ----
+let cur=-1,lbTok=0;
 async function openLb(k){
-  const it=filtered[k],lb=$('#lb');
+  const it=filtered[k],lb=$('#lb'),tok=++lbTok;cur=k;
   lb.classList.add('on');
   $('#lbm').innerHTML='<img alt="" src="'+(thumbCache.get(it.i)||'')+'">';
   const meta=[it.t,it.s,it.ti&&esc(it.ti),it.g&&esc(it.g)].filter(Boolean).join(' / ');
@@ -149,12 +152,27 @@ async function openLb(k){
     +(it.n?`<pre>${esc(it.n)}</pre>`:'')+(it.b?`<pre>${esc(it.b)}</pre>`:'');
   try{
     const j=await rpc('api.dropboxapi.com','files/get_temporary_link',{path:imgPath(it)});
-    if(lb.classList.contains('on'))$('#lbm').innerHTML=`<img alt="" src="${j.link}">`;
+    if(lb.classList.contains('on')&&tok===lbTok)$('#lbm').innerHTML=`<img alt="" src="${j.link}">`;
   }catch(e){console.warn(e)}
 }
 $('#grid').addEventListener('click',e=>{const t=e.target.closest('.tile');if(t)openLb(+t.dataset.k)});
-$('#lbx').onclick=()=>{$('#lb').classList.remove('on');$('#lbm').innerHTML=''};
-addEventListener('keydown',e=>{if(e.key==='Escape')$('#lbx').click()});
+const closeLb=()=>{lbTok++;cur=-1;$('#lb').classList.remove('on');$('#lbm').innerHTML=''};
+$('#lbx').onclick=closeLb;
+function step(d){
+  const k=cur+d;if(cur<0||k<0||k>=filtered.length)return;
+  if(k>=shown)more();
+  openLb(k);
+}
+// 画像以外の領域をタップで閉じる(説明欄 #lbi は対象外=OCRを選択できる)
+$('#lbm').addEventListener('click',e=>{if(e.target.tagName!=='IMG')closeLb()});
+// 左右スワイプで前後の画像へ
+let tx=0,ty=0;
+$('#lbm').addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY},{passive:true});
+$('#lbm').addEventListener('touchend',e=>{
+  const dx=e.changedTouches[0].clientX-tx,dy=e.changedTouches[0].clientY-ty;
+  if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.5){e.preventDefault();step(dx<0?1:-1)}
+});
+addEventListener('keydown',e=>{if(cur<0)return;if(e.key==='Escape')closeLb();else if(e.key==='ArrowLeft')step(-1);else if(e.key==='ArrowRight')step(1)});
 
 // ---- 起動 ----
 async function loadIndex(){
