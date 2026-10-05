@@ -37,6 +37,10 @@ button{cursor:pointer}
 #lbm.failed::after{content:"読み込み失敗";position:absolute;top:50%;left:0;right:0;text-align:center;color:#ff8a8a;pointer-events:none}
 @keyframes spin{to{transform:rotate(360deg)}}
 #build{padding:16px 12px calc(16px + env(safe-area-inset-bottom));text-align:center;color:var(--dim);font-size:11px}
+#gear{font-size:16px;padding:2px 8px;vertical-align:middle}
+#cfg{margin:10px auto 0;max-width:420px;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--fg);font-size:12px}
+#cfg[hidden]{display:none}
+.cfgb{display:flex;gap:8px;justify-content:center;margin-top:8px}
 #lbx{position:absolute;top:8px;right:8px;z-index:2;font-size:18px}
 </style>
 </head>
@@ -54,11 +58,16 @@ button{cursor:pointer}
     <input id="q" type="search" placeholder="検索">
     <select id="sort" title="並び順"><option value="new">新しい順</option><option value="old">古い順</option><option value="visited">最近開いた順</option><option value="viewed">閲覧数順</option></select>
     <span id="stat"></span>
-    <button id="out" title="この端末の認可を消す">⏏</button>
   </header>
   <div id="grid"></div>
 </div>
-<div id="build"></div>
+<div id="build">
+  <span id="bt"></span> <button id="gear" title="設定" aria-expanded="false" aria-controls="cfg">⚙</button>
+  <div id="cfg" hidden>
+    <div id="cfginfo"></div>
+    <div class="cfgb"><button id="expv">閲覧履歴を書き出す</button><button id="out">認可を取り消す</button></div>
+  </div>
+</div>
 <div id="lb"><button id="lbx">✕</button><div id="lbm"></div><div id="lbi"></div></div>
 <script src="build-info.js"></script>
 <script>
@@ -289,14 +298,13 @@ async function loadIndex(){
   applyFilter();
 }
 function showBuild(){
-  const b=$('#build'),t=window.BUILD_INFO?`build ${BUILD_INFO.sha} (${BUILD_INFO.time})`:'';
+  $('#bt').textContent=window.BUILD_INFO?`build ${BUILD_INFO.sha} (${BUILD_INFO.time})`:'';
   const n=Object.keys(visits).length,ex=+LS('gt_exported')||0;
-  b.textContent=t;
-  const d=document.createElement('div');d.style.marginTop='6px';
-  d.innerHTML=`閲覧履歴 ${n} 枚 / 最終書き出し ${ex?new Date(ex).toLocaleString('ja-JP',{dateStyle:'short',timeStyle:'short'}):'なし'} <button id="expv">書き出す</button>`;
-  b.append(d);$('#expv').onclick=exportVisits;
+  $('#cfginfo').textContent=`閲覧履歴 ${n} 枚 / 最終書き出し ${ex?new Date(ex).toLocaleString('ja-JP',{dateStyle:'short',timeStyle:'short'}):'なし'}`;
 }
 showBuild();
+$('#gear').onclick=()=>{const c=$('#cfg');c.hidden=!c.hidden;$('#gear').setAttribute('aria-expanded',!c.hidden);if(!c.hidden)c.scrollIntoView({block:'end',behavior:'smooth'})};
+$('#expv').onclick=exportVisits;
 $('#login').onclick=startLogin;
 $('#out').onclick=()=>{if(confirm('この端末の認可を消しますか?')){['gt_refresh','gt_key'].forEach(k=>LSset(k,null));location.reload()}};
 (async()=>{
