@@ -30,6 +30,7 @@ button{cursor:pointer}
 #lbi{height:25vh;overflow:auto;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--panel);font-size:12px}
 #lbi a{color:var(--accent);word-break:break-all}
 #lbi pre{white-space:pre-wrap;word-break:break-all;color:var(--dim);margin:6px 0 0}
+#build{padding:16px 12px calc(16px + env(safe-area-inset-bottom));text-align:center;color:var(--dim);font-size:11px}
 #lbx{position:absolute;top:8px;right:8px;z-index:2;font-size:18px}
 </style>
 </head>
@@ -50,7 +51,9 @@ button{cursor:pointer}
   </header>
   <div id="grid"></div>
 </div>
+<div id="build"></div>
 <div id="lb"><button id="lbx">✕</button><div id="lbm"></div><div id="lbi"></div></div>
+<script src="build-info.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const LS=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
@@ -206,6 +209,7 @@ async function loadIndex(){
   }
   applyFilter();
 }
+if(window.BUILD_INFO)$('#build').textContent=`build ${BUILD_INFO.sha} (${BUILD_INFO.time})`;
 $('#login').onclick=startLogin;
 $('#out').onclick=()=>{if(confirm('この端末の認可を消しますか?')){['gt_refresh','gt_key'].forEach(k=>LSset(k,null));location.reload()}};
 (async()=>{
