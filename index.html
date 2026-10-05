@@ -99,6 +99,21 @@ async function download(path){
   if(!r.ok)throw new Error('download '+path+' '+r.status);
   return r.json();
 }
+async function downloadBlob(path){
+  const r=await fetch('https://content.dropboxapi.com/2/files/download',{method:'POST',headers:{Authorization:'Bearer '+await token(),'Dropbox-API-Arg':JSON.stringify({path})}});
+  if(!r.ok)throw new Error('download '+r.status);
+  return URL.createObjectURL(await r.blob());
+}
+// gif は静止サムネイルのあと、動くサムネイル(/index/anim/…webp)に差し替える
+const animCache=new Map();
+async function animate(img){
+  const id=img.dataset.id;
+  try{
+    if(!animCache.has(id))animCache.set(id,downloadBlob(`/index/anim/${id.slice(0,2)}/${id}.webp`));
+    const u=await animCache.get(id);
+    if(img.isConnected)img.src=u;
+  }catch(e){animCache.delete(id);console.warn(e)}
+}
 const imgPath=it=>`/public/${it.i.slice(0,2)}/${it.i}.${it.e}`;
 
 // ---- サムネイル: 25枚ずつ get_thumbnail_batch ----
@@ -108,11 +123,11 @@ async function pump(){
   if(thumbBusy.v)return;thumbBusy.v=true;
   try{while(thumbQ.length){
     const batch=thumbQ.splice(0,25).filter(i=>i.isConnected);
-    const todo=batch.filter(i=>{const c=thumbCache.get(i.dataset.id);if(c){i.src=c;return false}return true});
+    const todo=batch.filter(i=>{const c=thumbCache.get(i.dataset.id);if(c){i.src=c;if(i.dataset.a)animate(i);return false}return true});
     if(!todo.length)continue;
     try{
       const j=await rpc('content.dropboxapi.com','files/get_thumbnail_batch',{entries:todo.map(i=>({path:i.dataset.path,format:'jpeg',size:'w256h256',mode:'bestfit'}))});
-      j.entries.forEach((e,k)=>{if(e['.tag']==='success'){const u='data:image/jpeg;base64,'+e.thumbnail;thumbCache.set(todo[k].dataset.id,u);todo[k].src=u}});
+      j.entries.forEach((e,k)=>{if(e['.tag']==='success'){const u='data:image/jpeg;base64,'+e.thumbnail;thumbCache.set(todo[k].dataset.id,u);todo[k].src=u;if(todo[k].dataset.a)animate(todo[k])}});
     }catch(e){console.warn(e)}
   }}finally{thumbBusy.v=false}
 }
@@ -133,7 +148,7 @@ function more(){
   const g=$('#grid'),end=Math.min(shown+PAGE,filtered.length);
   const html=[];
   for(let k=shown;k<end;k++){const it=filtered[k];
-    html.push(`<div class="tile" data-k="${k}"><img data-id="${it.i}" data-path="${esc(imgPath(it))}" alt=""><div class="d">${esc(it.t.slice(0,16))}</div></div>`)}
+    html.push(`<div class="tile" data-k="${k}"><img data-id="${it.i}"${it.a?' data-a="1"':''} data-path="${esc(imgPath(it))}" alt=""><div class="d">${esc(it.t.slice(0,16))}</div></div>`)}
   g.insertAdjacentHTML('beforeend',html.join(''));
   g.querySelectorAll('img:not([data-o])').forEach(i=>{i.dataset.o=1;io.observe(i)});
   shown=end;
