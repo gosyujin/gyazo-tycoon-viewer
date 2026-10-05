@@ -37,7 +37,8 @@ button{cursor:pointer}
 #lbm.failed::after{content:"読み込み失敗";position:absolute;top:50%;left:0;right:0;text-align:center;color:#ff8a8a;pointer-events:none}
 @keyframes spin{to{transform:rotate(360deg)}}
 #build{padding:16px 12px calc(16px + env(safe-area-inset-bottom));text-align:center;color:var(--dim);font-size:11px}
-#gear{font-size:16px;padding:2px 8px;vertical-align:middle;margin-left:auto}
+#gear,#rand{font-size:16px;padding:2px 8px;vertical-align:middle}
+#rand{margin-left:auto}
 #cfg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10;box-shadow:0 0 0 100vmax #000a;width:min(420px,88vw);padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--fg);font-size:12px}
 #cfg[hidden]{display:none}
 .cfgb{display:flex;gap:8px;justify-content:center;margin-top:8px}
@@ -58,6 +59,7 @@ button{cursor:pointer}
     <input id="q" type="search" placeholder="検索">
     <select id="sort" title="並び順"><option value="new">新しい順</option><option value="old">古い順</option><option value="visited">最近開いた順</option><option value="viewed">閲覧数順</option></select>
     <span id="stat"></span>
+    <button id="rand" title="ランダムジャンプ">🔀</button>
     <button id="gear" title="設定" aria-expanded="false" aria-controls="cfg">⚙</button>
   </header>
   <div id="grid"></div>
@@ -287,6 +289,12 @@ $('#lbi').addEventListener('click',e=>{
     openLb(cur);
   }
 });
+$('#rand').onclick=()=>{  // 現在の絞り込み結果から1枚ランダムに拡大表示(直前と同じ画像は避ける)
+  const n=filtered.length;if(!n)return;
+  let k=Math.floor(Math.random()*n);
+  if(n>1&&k===cur)k=(k+1+Math.floor(Math.random()*(n-1)))%n;
+  openLb(k);
+};
 $('#grid').addEventListener('click',e=>{const t=e.target.closest('.tile');if(t)openLb(+t.dataset.k)});
 const closeLb=()=>{lbTok++;$('#lbm').className='';cur=-1;$('#lb').classList.remove('on');$('#lbm').innerHTML=''};
 $('#lbx').onclick=closeLb;
