@@ -185,7 +185,14 @@ function step(d){
   openLb(k);
 }
 // 画像以外の領域をタップで閉じる(説明欄 #lbi は対象外=OCRを選択できる)
-$('#lbm').addEventListener('click',e=>{if(e.target.tagName!=='IMG')closeLb()});
+// img は #lbm 全面に広げて object-fit:contain で描画しているので、実際に絵が描かれている矩形の外側かどうかを計算する
+function onPicture(e){
+  const im=e.target;if(im.tagName!=='IMG'||!im.naturalWidth)return false;
+  const b=im.getBoundingClientRect(),sc=Math.min(b.width/im.naturalWidth,b.height/im.naturalHeight);
+  const w=im.naturalWidth*sc,h=im.naturalHeight*sc,l=b.left+(b.width-w)/2,t=b.top+(b.height-h)/2;
+  return e.clientX>=l&&e.clientX<=l+w&&e.clientY>=t&&e.clientY<=t+h;
+}
+$('#lbm').addEventListener('click',e=>{if(!onPicture(e))closeLb()});
 // 左右スワイプで前後の画像へ
 let tx=0,ty=0;
 $('#lbm').addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY},{passive:true});
