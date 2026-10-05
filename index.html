@@ -38,7 +38,7 @@ button{cursor:pointer}
 @keyframes spin{to{transform:rotate(360deg)}}
 #build{padding:16px 12px calc(16px + env(safe-area-inset-bottom));text-align:center;color:var(--dim);font-size:11px}
 #gear{font-size:16px;padding:2px 8px;vertical-align:middle;margin-left:auto}
-#cfg{margin:10px auto 0;max-width:420px;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--fg);font-size:12px}
+#cfg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10;box-shadow:0 0 0 100vmax #000a;width:min(420px,88vw);padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--fg);font-size:12px}
 #cfg[hidden]{display:none}
 .cfgb{display:flex;gap:8px;justify-content:center;margin-top:8px}
 #lbx{position:absolute;top:8px;right:8px;z-index:2;font-size:18px}
@@ -334,7 +334,11 @@ function showBuild(){
   $('#cfginfo').textContent=`閲覧履歴 ${n} 枚 / 未反映のメモ ${Object.keys(notes).length} 件 / 最終書き出し ${ex?new Date(ex).toLocaleString('ja-JP',{dateStyle:'short',timeStyle:'short'}):'なし'}`;
 }
 showBuild();
-$('#gear').onclick=()=>{const c=$('#cfg');c.hidden=!c.hidden;$('#gear').setAttribute('aria-expanded',!c.hidden);if(!c.hidden)c.scrollIntoView({block:'end',behavior:'smooth'})};
+{const c=$('#cfg'),g=$('#gear');
+const tg=o=>{c.hidden=!o;g.setAttribute('aria-expanded',o)};
+g.onclick=e=>{e.stopPropagation();tg(c.hidden)};
+document.addEventListener('click',e=>{if(!c.hidden&&!c.contains(e.target))tg(false)});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!c.hidden)tg(false)});}
 $('#expv').onclick=exportVisits;
 $('#login').onclick=startLogin;
 $('#out').onclick=()=>{if(confirm('この端末の認可を消しますか?')){['gt_refresh','gt_key'].forEach(k=>LSset(k,null));location.reload()}};
