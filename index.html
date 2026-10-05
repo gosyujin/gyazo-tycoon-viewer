@@ -37,7 +37,7 @@ button{cursor:pointer}
 #lbm.failed::after{content:"読み込み失敗";position:absolute;top:50%;left:0;right:0;text-align:center;color:#ff8a8a;pointer-events:none}
 @keyframes spin{to{transform:rotate(360deg)}}
 #build{padding:16px 12px calc(16px + env(safe-area-inset-bottom));text-align:center;color:var(--dim);font-size:11px}
-#gear{font-size:16px;padding:2px 8px;vertical-align:middle}
+#gear{font-size:16px;padding:2px 8px;vertical-align:middle;margin-left:auto}
 #cfg{margin:10px auto 0;max-width:420px;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--fg);font-size:12px}
 #cfg[hidden]{display:none}
 .cfgb{display:flex;gap:8px;justify-content:center;margin-top:8px}
@@ -58,14 +58,15 @@ button{cursor:pointer}
     <input id="q" type="search" placeholder="検索">
     <select id="sort" title="並び順"><option value="new">新しい順</option><option value="old">古い順</option><option value="visited">最近開いた順</option><option value="viewed">閲覧数順</option></select>
     <span id="stat"></span>
+    <button id="gear" title="設定" aria-expanded="false" aria-controls="cfg">⚙</button>
   </header>
   <div id="grid"></div>
 </div>
 <div id="build">
-  <span id="bt"></span> <button id="gear" title="設定" aria-expanded="false" aria-controls="cfg">⚙</button>
+  <span id="bt"></span>
   <div id="cfg" hidden>
     <div id="cfginfo"></div>
-    <div class="cfgb"><button id="expv">閲覧履歴を書き出す</button><button id="out">認可を取り消す</button></div>
+    <div class="cfgb"><button id="expv">閲覧履歴・メモを書き出す</button><button id="out">認可を取り消す</button></div>
   </div>
 </div>
 <div id="lb"><button id="lbx">✕</button><div id="lbm"></div><div id="lbi"></div></div>
@@ -166,9 +167,10 @@ function recordVisit(id){
 const DEVICE=(()=>{let d=LS('gt_device');if(!/^[0-9a-f]{16}$/.test(d||'')){d=[...crypto.getRandomValues(new Uint8Array(8))].map(b=>b.toString(16).padStart(2,'0')).join('');LSset('gt_device',d)}return d})();
 async function exportVisits(){
   const out={};for(const[id,v]of Object.entries(visits))out[id]=[v.n,v.t];
-  if(!Object.keys(out).length){alert('まだ開いた画像がありません');return}
+  const nout={};for(const[id,e]of Object.entries(notes))nout[id]=[e.b,e.t];
+  if(!Object.keys(out).length&&!Object.keys(nout).length){alert('まだ開いた画像も編集したメモもありません');return}
   const name=`gyazo-visits-${DEVICE}.json`;
-  const file=new File([JSON.stringify({v:1,device:DEVICE,exported:Date.now(),visits:out})],name,{type:'application/json'});
+  const file=new File([JSON.stringify({v:1,device:DEVICE,exported:Date.now(),visits:out,notes:nout})],name,{type:'application/json'});
   try{
     if(navigator.canShare&&navigator.canShare({files:[file]}))await navigator.share({files:[file]});  // 共有シート →「ファイルに保存」→ Dropbox の gyazo-visits
     else{const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=name;document.body.append(a);a.click();a.remove()}
@@ -177,10 +179,23 @@ async function exportVisits(){
   showBuild();
 }
 
+// ---- メモの編集(この端末のみ。Mac に取り込まれるまでの「変更した」情報) ----
+// {id: {b: メモ全文, t: 編集時刻(ms)}}。書き出しで visits と一緒に Mac へ渡し、Mac で反映→配信データ(it.n)が
+// 変わった(=反映済み、またはMac側で別に更新された)時点でここからは消す。o は編集した時点の配信データのメモ(以後は配信データのメモがそのまま見える)。
+const NOTES_KEY='gt_notes_v1';
+const notes=(()=>{try{return JSON.parse(LS(NOTES_KEY)||'{}')}catch(e){return {}}})();
+const saveNotes=()=>LSset(NOTES_KEY,JSON.stringify(notes));
+const noteOf=it=>notes[it.i]?notes[it.i].b:(it.n||'');
+function pruneNotes(){  // 配信データに反映済みのものを捨てる
+  let ch=false;
+  for(const it of items){const e=notes[it.i];if(e&&(it.n||'')!==e.o){delete notes[it.i];ch=true}}
+  if(ch){saveNotes();showBuild()}
+}
+
 // ---- 一覧 ----
 let items=[],shown=0,filtered=[];
 const PAGE=120;
-const hay=it=>(it._h??=[it.s,it.ti,it.g,it.b,it.n,it.u,it.t].filter(Boolean).join(' ').toLowerCase());
+const hay=it=>(it._h??=[it.s,it.ti,it.g,it.b,noteOf(it),it.u,it.t].filter(Boolean).join(' ').toLowerCase());
 function applyFilter(){
   const terms=$('#q').value.toLowerCase().split(/\s+/).filter(Boolean);
   filtered=terms.length?items.filter(it=>terms.every(t=>hay(it).includes(t))):items;
@@ -246,7 +261,7 @@ async function openLb(k){
   $('#lbm').innerHTML='<img alt="" src="'+(hit||thumbCache.get(it.i)||'')+'">';
   const meta=[it.t,it.s,it.ti&&esc(it.ti),it.g&&esc(it.g)].filter(Boolean).join(' / ');
   $('#lbi').innerHTML=`<div>${meta}</div>`+(it.u?`<div><a href="${esc(it.u)}" target="_blank" rel="noopener">${esc(it.u)}</a></div>`:'')
-    +(it.n?`<pre>${esc(it.n)}</pre>`:'')+(it.b?`<pre>${esc(it.b)}</pre>`:'');
+    +`<pre id="lbn">${esc(noteOf(it))}</pre><div><button id="lbe">${notes[it.i]?'メモを編集(未反映)':'メモを編集'}</button></div>`+(it.b?`<pre>${esc(it.b)}</pre>`:'');
   try{
     const url=await getFull(it);
     // 先にデコードを済ませてから差し替える(読み込み中はサムネイルのまま)
@@ -257,6 +272,21 @@ async function openLb(k){
       for(const n of [k+1,k-1])if(filtered[n])getFull(filtered[n]).catch(()=>{})}
   }catch(e){console.warn(e);if(tok===lbTok)$('#lbm').className='failed'}
 }
+$('#lbi').addEventListener('click',e=>{
+  if(e.target.id==='lbe'){
+    const it=filtered[cur];if(!it)return;
+    $('#lbn').outerHTML=`<textarea id="lbt" rows="5" style="width:100%;box-sizing:border-box">${esc(noteOf(it))}</textarea>`;
+    $('#lbe').outerHTML='<button id="lbs">保存</button> <button id="lbc">キャンセル</button>';
+    $('#lbt').focus();
+  }else if(e.target.id==='lbc')openLb(cur);
+  else if(e.target.id==='lbs'){
+    const it=filtered[cur];if(!it)return;
+    const b=$('#lbt').value.trim();
+    if(b===(it.n||''))delete notes[it.i];else notes[it.i]={b,t:Date.now(),o:it.n||''};
+    saveNotes();delete it._h;showBuild();
+    openLb(cur);
+  }
+});
 $('#grid').addEventListener('click',e=>{const t=e.target.closest('.tile');if(t)openLb(+t.dataset.k)});
 const closeLb=()=>{lbTok++;$('#lbm').className='';cur=-1;$('#lb').classList.remove('on');$('#lbm').innerHTML=''};
 $('#lbx').onclick=closeLb;
@@ -295,12 +325,12 @@ async function loadIndex(){
     if(all.length===arr.length||all.length<=PAGE*2)applyFilter();
     else $('#stat').textContent=items.length.toLocaleString()+' 枚…';
   }
-  applyFilter();
+  applyFilter();pruneNotes();
 }
 function showBuild(){
   $('#bt').textContent=window.BUILD_INFO?`build ${BUILD_INFO.sha} (${BUILD_INFO.time})`:'';
   const n=Object.keys(visits).length,ex=+LS('gt_exported')||0;
-  $('#cfginfo').textContent=`閲覧履歴 ${n} 枚 / 最終書き出し ${ex?new Date(ex).toLocaleString('ja-JP',{dateStyle:'short',timeStyle:'short'}):'なし'}`;
+  $('#cfginfo').textContent=`閲覧履歴 ${n} 枚 / 未反映のメモ ${Object.keys(notes).length} 件 / 最終書き出し ${ex?new Date(ex).toLocaleString('ja-JP',{dateStyle:'short',timeStyle:'short'}):'なし'}`;
 }
 showBuild();
 $('#gear').onclick=()=>{const c=$('#cfg');c.hidden=!c.hidden;$('#gear').setAttribute('aria-expanded',!c.hidden);if(!c.hidden)c.scrollIntoView({block:'end',behavior:'smooth'})};
