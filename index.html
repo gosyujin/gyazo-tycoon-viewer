@@ -52,6 +52,11 @@ button{cursor:pointer}
 #lbsz.big{color:#ff6b6b;font-weight:bold}
 #cfgcache{margin-top:8px;color:var(--dim)}
 #imgurid{width:100%;margin-top:8px;font-size:16px}
+#pw{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center}
+#pw[hidden]{display:none}
+#pwf{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;width:min(320px,90vw)}
+#pwf input{width:100%;margin:8px 0}#pwe{color:#ff8a8a;min-height:1.5em}
+.tile .d.x{color:var(--accent)}
 </style>
 </head>
 <body>
@@ -69,6 +74,7 @@ button{cursor:pointer}
     <select id="sort" title="並び順"><option value="new">新しい順</option><option value="old">古い順</option><option value="visited">最近開いた順</option><option value="viewed">閲覧数順</option></select>
     <span id="stat"></span>
     <button id="rand" title="ランダムジャンプ">🔀</button>
+    <button id="lock" title="暗号化した画像" hidden>🔒</button>
     <button id="gear" title="設定" aria-expanded="false" aria-controls="cfg">⚙</button>
   </header>
   <div id="grid"></div>
@@ -82,8 +88,10 @@ button{cursor:pointer}
     <div class="cfgb"><button id="expv">閲覧履歴・メモを書き出す</button><button id="out">認可を取り消す</button></div>
   </div>
 </div>
+<div id="pw" hidden><form id="pwf"><div>暗号化した画像のパスフレーズ</div><input id="pwi" type="password" autocomplete="off" autocapitalize="off"><div id="pwe"></div><button>開く</button> <button type="button" id="pwc">キャンセル</button></form></div>
 <div id="lb"><button id="lbx">✕</button><div id="lbm"></div><div id="lbi"></div></div>
 <script src="build-info.js"></script>
+<script src="crypto.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const LS=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
@@ -132,6 +140,11 @@ async function download(path){
   if(!r.ok)throw new Error('download '+path+' '+r.status);
   return r.json();
 }
+async function downloadBuf(path){
+  const r=await fetch('https://content.dropboxapi.com/2/files/download',{method:'POST',headers:{Authorization:'Bearer '+await token(),'Dropbox-API-Arg':JSON.stringify({path})}});
+  if(!r.ok)throw new Error('download '+path+' '+r.status);
+  return r.arrayBuffer();
+}
 async function downloadBlob(path){
   const r=await fetch('https://content.dropboxapi.com/2/files/download',{method:'POST',headers:{Authorization:'Bearer '+await token(),'Dropbox-API-Arg':JSON.stringify({path})}});
   if(!r.ok)throw new Error('download '+r.status);
@@ -168,7 +181,9 @@ function wantThumb(img){thumbQ.push(img);pump()}
 async function pump(){
   if(thumbBusy.v)return;thumbBusy.v=true;
   try{while(thumbQ.length){
-    const batch=thumbQ.splice(0,25).filter(i=>i.isConnected);
+    const batch0=thumbQ.splice(0,25).filter(i=>i.isConnected);
+    await Promise.all(batch0.filter(i=>i.dataset.x).map(protThumb));
+    const batch=batch0.filter(i=>!i.dataset.x);
     const todo=batch.filter(i=>{const c=thumbCache.get(i.dataset.id);if(c){i.src=c;if(i.dataset.a)animate(i);return false}return true});
     if(!todo.length)continue;
     // 端末キャッシュにあるものは Dropbox へ取りに行かない
@@ -195,6 +210,14 @@ async function pump(){
       await Promise.all(puts);if(puts.length)await trimCache(THUMB_CACHE,THUMB_DISK);
     }catch(e){console.warn(e)}
   }}finally{thumbBusy.v=false}
+}
+async function protThumb(img){
+  const id=img.dataset.id;
+  try{
+    let u=thumbCache.get(id);
+    if(!u){u=URL.createObjectURL(new Blob([await GT_CRYPTO.decrypt(pkey,await downloadBuf(`/protected/${id.slice(0,2)}/${id}.t.bin`),id+'.t')],{type:'image/jpeg'}));thumbCache.set(id,u)}
+    if(img.isConnected)img.src=u;
+  }catch(e){console.warn(e)}
 }
 const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){io.unobserve(e.target);wantThumb(e.target)}}),{rootMargin:'400px'});
 
@@ -259,7 +282,7 @@ function more(){
   const g=$('#grid'),end=Math.min(shown+PAGE,filtered.length);
   const html=[];
   for(let k=shown;k<end;k++){const it=filtered[k];
-    html.push(`<div class="tile" data-k="${k}"><img data-id="${it.i}"${it.a?' data-a="1"':''} data-path="${esc(imgPath(it))}" alt=""><div class="d">${esc(it.t.slice(0,16))}</div></div>`)}
+    html.push(`<div class="tile" data-k="${k}"><img data-id="${it.i}"${it.a?' data-a="1"':''}${it.x?' data-x="1"':''} data-path="${esc(imgPath(it))}" alt=""><div class="d${it.x?' x':''}">${it.x?'🔒 ':''}${esc(it.t.slice(0,16))}</div></div>`)}
   g.insertAdjacentHTML('beforeend',html.join(''));
   g.querySelectorAll('img:not([data-o])').forEach(i=>{i.dataset.o=1;io.observe(i)});
   shown=end;
@@ -279,7 +302,10 @@ async function getFull(it){
   if(fullPending.has(id))return fullPending.get(id);
   const p=(async()=>{
     let blob=null,cache=null;const key='/__full/'+id;
-    try{cache=await caches.open(FULL_CACHE);const m=await cache.match(key);if(m)blob=await m.blob()}catch(e){}
+    if(it.x){  // 暗号化した画像: 復号した中身はメモリにだけ置く(端末のキャッシュには残さない)
+      const mime={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',heic:'image/heic',mp4:'video/mp4'}[(it.e||'').toLowerCase()]||'application/octet-stream';
+      blob=new Blob([await GT_CRYPTO.decrypt(pkey,await downloadBuf(`/protected/${id.slice(0,2)}/${id}.bin`),id)],{type:mime});
+    }else try{cache=await caches.open(FULL_CACHE);const m=await cache.match(key);if(m)blob=await m.blob()}catch(e){}
     if(!blob){
       const r=await fetch('https://content.dropboxapi.com/2/files/download',{method:'POST',headers:{Authorization:'Bearer '+await token(),'Dropbox-API-Arg':JSON.stringify({path:imgPath(it)})}});
       if(!r.ok)throw new Error('download '+r.status);
@@ -321,7 +347,7 @@ async function imgurUpload(it){
 function renderImgur(it,msg){
   const el=$('#lbu');if(!el)return;
   const recs=imgurRecs()[it.i]||[];
-  el.innerHTML=it.e==='mp4'?'<span style="color:var(--dim)">動画は imgur へのアップロードに対応していません</span>'
+  el.innerHTML=it.x?'<span style="color:var(--dim)">暗号化した画像は imgur にアップロードできません</span>':it.e==='mp4'?'<span style="color:var(--dim)">動画は imgur へのアップロードに対応していません</span>'
     :`<button id="lbimg">imgur にアップロード</button>${msg?`<div class="msg2 ${msg.ok?'ok':'ng'}">${esc(msg.t)}</div>`:''}`
     +recs.map(r=>`<div class="rec"><a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.link)}</a><button class="lbcp" data-l="${esc(r.link)}">コピー</button><button class="lbdel" data-h="${esc(r.hash)}">削除</button></div>`).join('');
 }
@@ -466,12 +492,59 @@ async function loadIndex(){
   // 新しい月から順に読み、1か月ごとに表示を更新
   for(const m of man.months){
     const arr=await download(`/index/${m.m}.json`);
-    all.push(...arr);items=all.slice();
+    all.push(...arr);pubItems=all.slice();mergeItems();
     if(all.length===arr.length||all.length<=PAGE*2)applyFilter();
     else $('#stat').textContent=items.length.toLocaleString()+'枚…';
   }
   applyFilter();pruneNotes();
+  initProtected();
 }
+
+// ---- 暗号化した画像(protected) ----
+// /index/crypto.json(salt と検証データ)があれば 🔒 を出す。パスフレーズから導出した鍵(取り出し不可の CryptoKey)は
+// この端末の IndexedDB に残し、次からは入力不要。一覧(/index/protected.bin)を復号して通常の一覧に混ぜる。
+// 復号した画像・サムネイルは端末のキャッシュに保存しない(メモリのみ)。🔒 を押すとロック(鍵と復号済みデータを消す)。
+let pubItems=[],protItems=[],pkey=null,pparams=null;
+function mergeItems(){
+  items=protItems.length?pubItems.concat(protItems).sort((a,b)=>a.t<b.t?1:a.t>b.t?-1:0):pubItems.slice();
+}
+const idb=()=>new Promise((ok,ng)=>{const r=indexedDB.open('gt_crypto',1);r.onupgradeneeded=()=>r.result.createObjectStore('k');r.onsuccess=()=>ok(r.result);r.onerror=()=>ng(r.error)});
+async function idbGet(k){try{const d=await idb();return await new Promise(ok=>{const r=d.transaction('k').objectStore('k').get(k);r.onsuccess=()=>ok(r.result);r.onerror=()=>ok(null)})}catch(e){return null}}
+async function idbSet(k,v){try{const d=await idb();await new Promise((ok,ng)=>{const t=d.transaction('k','readwrite');v==null?t.objectStore('k').delete(k):t.objectStore('k').put(v,k);t.oncomplete=ok;t.onerror=()=>ng(t.error)})}catch(e){console.warn(e)}}
+async function loadProtected(key){
+  const arr=JSON.parse(new TextDecoder().decode(await GT_CRYPTO.decrypt(key,await downloadBuf('/index/protected.bin'),'index')));
+  pkey=key;protItems=arr.map(it=>(it.x=1,it));
+  mergeItems();applyFilter();setLock(true);
+}
+function setLock(on){$('#lock').textContent=on?'🔓':'🔒';$('#lock').title=on?'暗号化した画像をロック':'暗号化した画像を開く'}
+async function initProtected(){
+  try{
+    pparams=await download('/index/crypto.json');
+  }catch(e){return}  // 暗号化した画像が無い
+  $('#lock').hidden=false;setLock(false);
+  const k=await idbGet('key');
+  if(k&&await GT_CRYPTO.verify(k,pparams)){try{await loadProtected(k)}catch(e){console.warn(e);setLock(false)}}
+}
+async function lockProtected(){
+  await idbSet('key',null);
+  for(const it of protItems)for(const m of [thumbCache,fullMem]){const u=m.get(it.i);if(u){URL.revokeObjectURL(u);m.delete(it.i)}}
+  pkey=null;protItems=[];mergeItems();closeLb();applyFilter();setLock(false);
+}
+function askPass(){$('#pwe').textContent='';$('#pwi').value='';$('#pw').hidden=false;$('#pwi').focus()}
+$('#lock').onclick=()=>pkey?lockProtected():askPass();
+$('#pwc').onclick=()=>{$('#pw').hidden=true};
+$('#pwf').onsubmit=async e=>{
+  e.preventDefault();
+  const b=$('#pwf button'),pass=$('#pwi').value;if(!pass)return;
+  b.disabled=true;$('#pwe').textContent='確認中…';
+  try{
+    const key=await GT_CRYPTO.deriveKey(pass,pparams);
+    if(!await GT_CRYPTO.verify(key,pparams)){$('#pwe').textContent='パスフレーズが違います';return}
+    await loadProtected(key);await idbSet('key',key);
+    $('#pw').hidden=true;
+  }catch(err){$('#pwe').textContent='失敗: '+(err.message||err)}
+  finally{b.disabled=false;$('#pwi').value=''}
+};
 function showBuild(){
   $('#bt').textContent=window.BUILD_INFO?`build ${BUILD_INFO.sha} (${BUILD_INFO.time})`:'';
   const n=Object.keys(visits).length,ex=+LS('gt_exported')||0;
