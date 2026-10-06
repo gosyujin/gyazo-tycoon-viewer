@@ -98,6 +98,7 @@ button{cursor:pointer}
   <section>
     <label for="imgurid">imgur Client-ID</label>
     <input id="imgurid" placeholder="匿名アップロード用" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <label><input id="trash" type="checkbox"> ゴミも表示する</label>
     <label for="budget">キャッシュの上限(MB)</label>
     <input id="budget" type="number" inputmode="numeric" min="100" step="100">
   </section>
@@ -638,8 +639,10 @@ $('#pf').onclick=prefetch;
 // この端末の IndexedDB に残し、次からは入力不要。一覧(/index/protected.bin)を復号して通常の一覧に混ぜる。
 // 復号した画像・サムネイルは端末のキャッシュに保存しない(メモリのみ)。🔒 を押すとロック(鍵と復号済みデータを消す)。
 let pubItems=[],protItems=[],pkey=null,pparams=null;
+const showTrash=()=>LS('gt_trash')==='1';  // ゴミ(it.z)は既定で隠す。設定の「ゴミも表示する」で出す
 function mergeItems(){
-  items=protItems.length?pubItems.concat(protItems).sort((a,b)=>a.t<b.t?1:a.t>b.t?-1:0):pubItems.slice();
+  const all=protItems.length?pubItems.concat(protItems).sort((a,b)=>a.t<b.t?1:a.t>b.t?-1:0):pubItems.slice();
+  items=showTrash()?all:all.filter(it=>!it.z);
 }
 const idb=()=>new Promise((ok,ng)=>{const r=indexedDB.open('gt_crypto',1);r.onupgradeneeded=()=>r.result.createObjectStore('k');r.onsuccess=()=>ok(r.result);r.onerror=()=>ng(r.error)});
 async function idbGet(k){try{const d=await idb();return await new Promise(ok=>{const r=d.transaction('k').objectStore('k').get(k);r.onsuccess=()=>ok(r.result);r.onerror=()=>ok(null)})}catch(e){return null}}
@@ -704,6 +707,8 @@ $('#cachedel').onclick=async()=>{
   await metaClear();thumbCache.clear();animCache.clear();fullMem.clear();
   showCache();
 };
+$('#trash').checked=showTrash();
+$('#trash').onchange=e=>{LSset('gt_trash',e.target.checked?'1':null);mergeItems();applyFilter()};
 $('#budget').value=Math.round(BUDGET()/1048576);
 $('#budget').onchange=async e=>{const v=Math.max(100,Math.round(+e.target.value)||3000);e.target.value=v;LSset('gt_budget',String(v));await enforce();showCache()};
 $('#expv').onclick=exportVisits;
