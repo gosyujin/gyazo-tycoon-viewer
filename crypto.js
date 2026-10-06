@@ -6,7 +6,7 @@ const enc=s=>new TextEncoder().encode(s);
 const b64d=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
 // パスフレーズ → 復号専用の鍵(取り出し不可。IndexedDB にそのまま保存できる)
 async function deriveKey(pass,params){
-  const base=await subtle.importKey('raw',enc(pass),'PBKDF2',false,['deriveKey']);
+  const base=await subtle.importKey('raw',enc(pass.normalize('NFC')),'PBKDF2',false,['deriveKey']);
   return subtle.deriveKey({name:'PBKDF2',hash:'SHA-256',salt:b64d(params.salt),iterations:params.iter},base,{name:'AES-GCM',length:256},false,['decrypt']);
 }
 async function decrypt(key,buf,aad){
