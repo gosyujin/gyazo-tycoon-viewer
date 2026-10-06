@@ -49,6 +49,7 @@ button{cursor:pointer}
 #lbu .ok{color:#7ee2a0}#lbu .ng{color:#ff8a8a}
 #lbu .rec{margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 #lbsz.big{color:#ff6b6b;font-weight:bold}
+#cfgcache{margin-top:8px;color:var(--dim)}
 #imgurid{width:100%;margin-top:8px;font-size:16px}
 </style>
 </head>
@@ -76,6 +77,7 @@ button{cursor:pointer}
   <div id="cfg" hidden>
     <div id="cfginfo"></div>
     <input id="imgurid" placeholder="imgur Client-ID(匿名アップロード用)" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div id="cfgcache">ローカルキャッシュ: <span id="cachesz">…</span> <button id="cachedel">削除</button></div>
     <div class="cfgb"><button id="expv">閲覧履歴・メモを書き出す</button><button id="out">認可を取り消す</button></div>
   </div>
 </div>
@@ -132,14 +134,27 @@ async function download(path){
 async function downloadBlob(path){
   const r=await fetch('https://content.dropboxapi.com/2/files/download',{method:'POST',headers:{Authorization:'Bearer '+await token(),'Dropbox-API-Arg':JSON.stringify({path})}});
   if(!r.ok)throw new Error('download '+r.status);
-  return URL.createObjectURL(await r.blob());
+  return r.blob();
 }
 // gif は静止サムネイルのあと、動くサムネイル(/index/anim/…webp)に差し替える
+// 端末キャッシュ(Cache Storage): 原寸 150 枚・サムネイル 4000 枚・動くサムネイル 150 枚まで。⚙ から整理できる
+const FULL_CACHE='gt-full-v1',THUMB_CACHE='gt-thumb-v1',ANIM_CACHE='gt-anim-v1',THUMB_DISK=4000,ANIM_DISK=150;
+async function trimCache(name,max){  // keys() は追加順。古いものから捨てる
+  try{const c=await caches.open(name),ks=await c.keys();for(const k of ks.slice(0,Math.max(0,ks.length-max)))await c.delete(k)}catch(e){}
+}
 const animCache=new Map();
 async function animate(img){
   const id=img.dataset.id;
   try{
-    if(!animCache.has(id))animCache.set(id,downloadBlob(`/index/anim/${id.slice(0,2)}/${id}.webp`));
+    if(!animCache.has(id))animCache.set(id,(async()=>{
+      const key='/__anim/'+id;let blob=null,c=null;
+      try{c=await caches.open(ANIM_CACHE);const m=await c.match(key);if(m)blob=await m.blob()}catch(e){}
+      if(!blob){
+        blob=await downloadBlob(`/index/anim/${id.slice(0,2)}/${id}.webp`);
+        try{if(c){await c.put(key,new Response(blob,{headers:{'Content-Type':blob.type}}));await trimCache(ANIM_CACHE,ANIM_DISK)}}catch(e){}
+      }
+      return URL.createObjectURL(blob);
+    })());
     const u=await animCache.get(id);
     if(img.isConnected)img.src=u;
   }catch(e){animCache.delete(id);console.warn(e)}
@@ -155,9 +170,28 @@ async function pump(){
     const batch=thumbQ.splice(0,25).filter(i=>i.isConnected);
     const todo=batch.filter(i=>{const c=thumbCache.get(i.dataset.id);if(c){i.src=c;if(i.dataset.a)animate(i);return false}return true});
     if(!todo.length)continue;
+    // 端末キャッシュにあるものは Dropbox へ取りに行かない
+    let rest=todo,tc=null;
     try{
-      const j=await rpc('content.dropboxapi.com','files/get_thumbnail_batch',{entries:todo.map(i=>({path:i.dataset.path,format:'jpeg',size:'w256h256',mode:'bestfit'}))});
-      j.entries.forEach((e,k)=>{if(e['.tag']==='success'){const u='data:image/jpeg;base64,'+e.thumbnail;thumbCache.set(todo[k].dataset.id,u);todo[k].src=u;if(todo[k].dataset.a)animate(todo[k])}});
+      tc=await caches.open(THUMB_CACHE);
+      const hits=await Promise.all(todo.map(async i=>{const m=await tc.match('/__thumb/'+i.dataset.id);return m?m.blob():null}));
+      rest=[];
+      todo.forEach((i,k)=>{
+        if(!hits[k]){rest.push(i);return}
+        const u=URL.createObjectURL(hits[k]);thumbCache.set(i.dataset.id,u);
+        if(i.isConnected){i.src=u;if(i.dataset.a)animate(i)}
+      });
+    }catch(e){rest=todo}
+    if(!rest.length)continue;
+    try{
+      const j=await rpc('content.dropboxapi.com','files/get_thumbnail_batch',{entries:rest.map(i=>({path:i.dataset.path,format:'jpeg',size:'w256h256',mode:'bestfit'}))});
+      const puts=[];
+      j.entries.forEach((e,k)=>{if(e['.tag']==='success'){
+        const blob=new Blob([Uint8Array.from(atob(e.thumbnail),c=>c.charCodeAt(0))],{type:'image/jpeg'});
+        const u=URL.createObjectURL(blob);thumbCache.set(rest[k].dataset.id,u);rest[k].src=u;if(rest[k].dataset.a)animate(rest[k]);
+        if(tc)puts.push(tc.put('/__thumb/'+rest[k].dataset.id,new Response(blob,{headers:{'Content-Type':'image/jpeg'}})).catch(()=>{}));
+      }});
+      await Promise.all(puts);if(puts.length)await trimCache(THUMB_CACHE,THUMB_DISK);
     }catch(e){console.warn(e)}
   }}finally{thumbBusy.v=false}
 }
@@ -244,7 +278,7 @@ async function getFull(it){
   if(fullPending.has(id))return fullPending.get(id);
   const p=(async()=>{
     let blob=null,cache=null;const key='/__full/'+id;
-    try{cache=await caches.open('gt-full-v1');const m=await cache.match(key);if(m)blob=await m.blob()}catch(e){}
+    try{cache=await caches.open(FULL_CACHE);const m=await cache.match(key);if(m)blob=await m.blob()}catch(e){}
     if(!blob){
       const r=await fetch('https://content.dropboxapi.com/2/files/download',{method:'POST',headers:{Authorization:'Bearer '+await token(),'Dropbox-API-Arg':JSON.stringify({path:imgPath(it)})}});
       if(!r.ok)throw new Error('download '+r.status);
@@ -444,10 +478,23 @@ function showBuild(){
 }
 showBuild();
 {const c=$('#cfg'),g=$('#gear');
-const tg=o=>{c.hidden=!o;g.setAttribute('aria-expanded',o)};
+const tg=o=>{c.hidden=!o;g.setAttribute('aria-expanded',o);if(o)showCache()};
 g.onclick=e=>{e.stopPropagation();tg(c.hidden)};
 document.addEventListener('click',e=>{if(!c.hidden&&!c.contains(e.target))tg(false)});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!c.hidden)tg(false)});}
+async function showCache(){
+  const el=$('#cachesz');if(!el)return;
+  const n=async name=>{try{return (await (await caches.open(name)).keys()).length}catch(e){return 0}};
+  const [f,t,a]=await Promise.all([n(FULL_CACHE),n(THUMB_CACHE),n(ANIM_CACHE)]);
+  let u=null;try{u=(await navigator.storage.estimate()).usage}catch(e){}
+  el.textContent=(u!=null?fmtSize(u):'?')+`(原寸 ${f}・サムネイル ${t}・動く ${a} 枚)`;
+}
+$('#cachedel').onclick=async()=>{
+  if(!confirm('端末に保存した画像キャッシュを削除しますか?(次に見るとき Dropbox から取り直します。閲覧履歴・メモ・設定は消えません)'))return;
+  for(const k of [FULL_CACHE,THUMB_CACHE,ANIM_CACHE])try{await caches.delete(k)}catch(e){}
+  thumbCache.clear();animCache.clear();fullMem.clear();
+  showCache();
+};
 $('#expv').onclick=exportVisits;
 $('#imgurid').value=LS('gt_imgur')||'';
 $('#imgurid').oninput=e=>LSset('gt_imgur',e.target.value.trim()||null);
