@@ -7,7 +7,8 @@
 <style>
 :root{--bg:#3d424c;--panel:#474d58;--line:#5d6471;--fg:#f0f2f5;--dim:#b4bac6;--accent:#7db2ff}
 *{box-sizing:border-box}
-html,body{overflow-x:hidden;max-width:100%}
+html{overflow-x:hidden}
+html,body{max-width:100%}  /* overflow は html だけに付ける(body に付けると body がスクロール容器になり、sticky ヘッダーが追従しない) */
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"Hiragino Sans",sans-serif;min-height:100vh}
 header{position:sticky;top:0;z-index:5;display:flex;flex-wrap:nowrap;gap:6px;align-items:center;padding:8px 10px;background:var(--panel);border-bottom:1px solid var(--line)}
 select{background:#555c69;color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:6px 8px;font:inherit;font-size:16px}
@@ -77,7 +78,7 @@ button{cursor:pointer}
   <div id="cfg" hidden>
     <div id="cfginfo"></div>
     <input id="imgurid" placeholder="imgur Client-ID(匿名アップロード用)" autocomplete="off" autocapitalize="off" spellcheck="false">
-    <div id="cfgcache">ローカルキャッシュ: <span id="cachesz">…</span> <button id="cachedel">削除</button></div>
+    <div id="cfgcache">キャッシュ <span id="cachesz">…</span> <button id="cachedel">削除</button></div>
     <div class="cfgb"><button id="expv">閲覧履歴・メモを書き出す</button><button id="out">認可を取り消す</button></div>
   </div>
 </div>
@@ -487,7 +488,7 @@ async function showCache(){
   const n=async name=>{try{return (await (await caches.open(name)).keys()).length}catch(e){return 0}};
   const [f,t,a]=await Promise.all([n(FULL_CACHE),n(THUMB_CACHE),n(ANIM_CACHE)]);
   let u=null;try{u=(await navigator.storage.estimate()).usage}catch(e){}
-  el.textContent=(u!=null?fmtSize(u):'?')+`(原寸 ${f}・サムネイル ${t}・動く ${a} 枚)`;
+  el.textContent=(u!=null?fmtSize(u):'?')+`(原寸 ${f}・サムネ ${t}・gif ${a})`;
 }
 $('#cachedel').onclick=async()=>{
   if(!confirm('端末に保存した画像キャッシュを削除しますか?(次に見るとき Dropbox から取り直します。閲覧履歴・メモ・設定は消えません)'))return;
