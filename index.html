@@ -275,7 +275,9 @@ function applyFilter(){
   }
   window.scrollTo(0,0);
   $('#grid').innerHTML='';shown=0;more();
-  $('#stat').textContent=filtered.length.toLocaleString()+'枚';
+  const only=/^(visited|viewed)$/.test(sort);  // この2つは「この端末で開いたことのある画像だけ」。気づかず件数が少ないと思わないよう表示する
+  $('#stat').textContent=filtered.length.toLocaleString()+'枚'+(only?'(開いた分のみ)':'');
+  $('#sort').style.borderColor=only?'var(--accent)':'';
   if(!filtered.length)$('#grid').innerHTML='<div class="msg">'+(/^(visited|viewed)$/.test(sort)?'まだ開いた画像がありません':'該当なし')+'</div>';
 }
 function more(){
