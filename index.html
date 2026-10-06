@@ -288,7 +288,7 @@ function renderImgur(it,msg){
   const recs=imgurRecs()[it.i]||[];
   el.innerHTML=it.e==='mp4'?'<span style="color:var(--dim)">動画は imgur へのアップロードに対応していません</span>'
     :`<button id="lbimg">imgur にアップロード</button>${msg?`<div class="msg2 ${msg.ok?'ok':'ng'}">${esc(msg.t)}</div>`:''}`
-    +recs.map(r=>`<div class="rec"><a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.link)}</a><button class="lbcp" data-l="${esc(r.link)}">URLをコピー</button><button class="lbdel" data-h="${esc(r.hash)}">imgur から削除</button></div>`).join('');
+    +recs.map(r=>`<div class="rec"><a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.link)}</a><button class="lbcp" data-l="${esc(r.link)}">コピー</button><button class="lbdel" data-h="${esc(r.hash)}">削除</button></div>`).join('');
 }
 async function imgurClick(){
   const it=filtered[cur];if(!it)return;
@@ -312,7 +312,7 @@ async function copyUrl(btn){
     try{const t=document.createElement('textarea');t.value=l;t.style.cssText='position:fixed;opacity:0';document.body.append(t);t.select();ok=document.execCommand('copy');t.remove()}catch(e2){}
   }
   btn.textContent=ok?'コピーしました':'コピー失敗';
-  setTimeout(()=>{btn.textContent='URLをコピー'},1500);
+  setTimeout(()=>{btn.textContent='コピー'},1500);
 }
 async function imgurDelete(btn){
   const it=filtered[cur],h=btn.dataset.h;if(!it||!confirm('imgur 上の画像を削除しますか?'))return;
