@@ -389,6 +389,21 @@ $('#lbm').addEventListener('touchend',e=>{
 });
 addEventListener('keydown',e=>{if(cur<0)return;if(e.key==='Escape')closeLb();else if(e.key==='ArrowLeft')step(-1);else if(e.key==='ArrowRight')step(1)});
 
+// ---- 更新確認 ----
+// ホーム画面に追加した iOS の Web アプリは HTML を強くキャッシュし、タスクキルでも古いまま残ることがある。
+// 起動時に build-info.js を no-store で取り直し、デプロイ済みの sha が今のページと違えば ?v=<sha> 付きの URL へ移動して読み直す(別URL=別キャッシュなので確実に新しい HTML が来る)
+async function checkUpdate(){
+  const cur=window.BUILD_INFO&&BUILD_INFO.sha;if(!cur||cur==='dev'||/[?&](code|error)=/.test(location.search))return;  // 認可の戻り(code は1回しか使えない)では動かさない
+  try{
+    const t=await (await fetch('build-info.js?nc='+Date.now(),{cache:'no-store'})).text();
+    const m=t.match(/sha:\s*'([0-9a-f]+)'/);if(!m||m[1]===cur)return;
+    if(sessionStorage.getItem('gt_upd')===m[1])return;  // 同じ版へ移動済み(デプロイ反映待ちなど)なら繰り返さない
+    sessionStorage.setItem('gt_upd',m[1]);
+    const u=new URL(location.href);u.searchParams.set('v',m[1]);location.replace(u);
+  }catch(e){}
+}
+checkUpdate();
+
 // ---- 起動 ----
 async function loadIndex(){
   $('#grid').innerHTML='<div class="msg">読み込み中…</div>';
