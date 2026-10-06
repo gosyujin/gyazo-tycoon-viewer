@@ -9,7 +9,7 @@
 *{box-sizing:border-box}
 html{overflow-x:hidden}
 html,body{max-width:100%}  /* overflow は html だけに付ける(body に付けると body がスクロール容器になり、sticky ヘッダーが追従しない) */
-body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"Hiragino Sans",sans-serif;min-height:100vh}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"Hiragino Sans",sans-serif;min-height:100vh;padding-bottom:calc(30px + env(safe-area-inset-bottom))}
 header{position:sticky;top:0;z-index:5;display:flex;flex-wrap:nowrap;gap:6px;align-items:center;padding:8px 10px;background:var(--panel);border-bottom:1px solid var(--line)}
 select{background:#555c69;color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:6px 8px;font:inherit;font-size:16px}
 input,button{background:#555c69;color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:6px 10px;font:inherit}
@@ -17,7 +17,9 @@ input{font-size:16px}  /* 16px未満だとiOSがフォーカス時にズーム�
 button{cursor:pointer}
 #q{flex:1 1 0;min-width:60px;width:0}
 #sort{flex:none;width:104px;padding:6px 4px;text-overflow:ellipsis}  /* ヘッダーを1行に収める */
-#stat{color:var(--dim);font-size:11px;white-space:nowrap;flex:none}
+#statbar{position:fixed;right:8px;bottom:calc(6px + env(safe-area-inset-bottom));z-index:4;max-width:calc(100vw - 16px);padding:2px 8px;background:var(--panel);border:1px solid var(--line);border-radius:4px;color:var(--dim);font-size:11px;line-height:1.5;text-align:right;pointer-events:none;opacity:.95}  /* Scrapbox の「N pages」のような画面下のステータス */
+#statbar:empty{display:none}
+#pf.on{background:var(--accent);color:#123}
 #grid{padding:10px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}
 .tile{position:relative;aspect-ratio:1;background:#2f333b;border-radius:6px;overflow:hidden;cursor:pointer}
 .tile img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
@@ -38,20 +40,27 @@ button{cursor:pointer}
 #lbm.loading::after{content:"";position:absolute;top:50%;left:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border:4px solid #fff5;border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;pointer-events:none}
 #lbm.failed::after{content:"読み込み失敗";position:absolute;top:50%;left:0;right:0;text-align:center;color:#ff8a8a;pointer-events:none}
 @keyframes spin{to{transform:rotate(360deg)}}
-#build{padding:16px 12px calc(16px + env(safe-area-inset-bottom));text-align:center;color:var(--dim);font-size:11px}
 #gear,#rand{font-size:16px;padding:2px 6px;vertical-align:middle;flex:none}
-#rand{margin-left:auto}
+#pf{margin-left:auto}
 #cfg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10;box-shadow:0 0 0 100vmax #000a;width:min(420px,88vw);padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--fg);font-size:12px}
 #cfg[hidden]{display:none}
-.cfgb{display:flex;gap:8px;justify-content:center;margin-top:8px}
+#cfg h3{margin:0 0 8px;font-size:14px}
+#cfg section{padding:10px 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+#cfg label,#cfg dt{color:var(--dim)}
+#cfg dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:2px 12px;color:var(--dim)}
+#cfg dt::after{content:":"}
+#cfg dt{padding-left:10px}#cfg dd{margin:0;color:var(--fg)}
+#cfg input{width:100%}
+#cfg section.danger{border:1px solid #c0504d;border-radius:6px;padding:10px;margin-top:8px;background:#c0504d14}
+#cfg .danger h4{margin:0;color:#ff8a8a;font-size:12px}
+#cfg .danger button{background:#8f2f2c;border-color:#c0504d;color:#fff;font-weight:bold}
 #lbx{position:absolute;top:8px;right:8px;z-index:2;font-size:18px}
 #lbu{margin:28px 0 8px;padding-top:12px;border-top:1px dashed var(--line)}  /* 誤タップを避けるため、他のボタンから離して置く */
 #lbu .msg2{margin-top:6px;color:var(--dim);word-break:break-all}
 #lbu .ok{color:#7ee2a0}#lbu .ng{color:#ff8a8a}
 #lbu .rec{margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 #lbsz.big{color:#ff6b6b;font-weight:bold}
-#cfgcache{margin-top:8px;color:var(--dim)}
-#imgurid{width:100%;margin-top:8px;font-size:16px}
+#cfg input{font-size:16px}
 #pw{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center}
 #pw[hidden]{display:none}
 #pwf{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;width:min(320px,90vw)}
@@ -72,21 +81,32 @@ button{cursor:pointer}
   <header>
     <input id="q" type="search" placeholder="検索">
     <select id="sort" title="並び順"><option value="new">新しい順</option><option value="old">古い順</option><option value="visited">最近開いた順</option><option value="viewed">閲覧数順</option></select>
-    <span id="stat"></span>
+    <button id="pf" title="Wi-Fi のときにサムネイルと閲覧数上位の画像を端末に先読みする(もう一度押すと中断)">⬇️</button>
     <button id="rand" title="ランダムジャンプ">🔀</button>
     <button id="lock" title="暗号化した画像" hidden>🔒</button>
     <button id="gear" title="設定" aria-expanded="false" aria-controls="cfg">⚙</button>
   </header>
   <div id="grid"></div>
 </div>
-<div id="build">
-  <span id="bt"></span>
-  <div id="cfg" hidden>
-    <div id="cfginfo"></div>
-    <input id="imgurid" placeholder="imgur Client-ID(匿名アップロード用)" autocomplete="off" autocapitalize="off" spellcheck="false">
-    <div id="cfgcache">キャッシュ <span id="cachesz">…</span> <button id="cachedel">削除</button></div>
-    <div class="cfgb"><button id="expv">閲覧履歴・メモを書き出す</button><button id="out">認可を取り消す</button></div>
-  </div>
+<div id="statbar"><span id="bt"></span><span id="stat"></span><span id="pfs"></span></div>
+<div id="cfg" hidden>
+  <h3>設定</h3>
+  <section>
+    <button id="expv">閲覧履歴・メモを書き出す</button>
+    <dl><dt>閲覧履歴</dt><dd id="cfgvis"></dd><dt>最終書き出し</dt><dd id="cfgexp"></dd></dl>
+  </section>
+  <section>
+    <label for="imgurid">imgur Client-ID</label>
+    <input id="imgurid" placeholder="匿名アップロード用" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <label for="budget">キャッシュの上限(MB)</label>
+    <input id="budget" type="number" inputmode="numeric" min="100" step="100">
+  </section>
+  <section class="danger">
+    <h4>デンジャーゾーン</h4>
+    <button id="cachedel">キャッシュ削除</button>
+    <dl><dt>使用量</dt><dd id="cachesz">…</dd><dt>オリジナル</dt><dd id="cache-f"></dd><dt>サムネイル</dt><dd id="cache-t"></dd><dt>gif</dt><dd id="cache-a"></dd></dl>
+    <button id="out">認可を取り消す</button>
+  </section>
 </div>
 <div id="pw" hidden><form id="pwf"><div>暗号化した画像のパスフレーズ</div><input id="pwi" type="password" autocomplete="off" autocapitalize="off"><div id="pwe"></div><button>開く</button> <button type="button" id="pwc">キャンセル</button></form></div>
 <div id="lb"><button id="lbx">✕</button><div id="lbm"></div><div id="lbi"></div></div>
@@ -132,7 +152,7 @@ async function finishLogin(code,state){
 // ---- Dropbox 呼び出し ----
 async function rpc(host,ep,arg){
   const r=await fetch('https://'+host+'/2/'+ep,{method:'POST',headers:{Authorization:'Bearer '+await token(),'Content-Type':'application/json'},body:JSON.stringify(arg)});
-  if(!r.ok)throw new Error(ep+' '+r.status);
+  if(!r.ok){const e=new Error(ep+' '+r.status);e.status=r.status;throw e}
   return r.json();
 }
 async function download(path){
@@ -152,10 +172,52 @@ async function downloadBlob(path){
 }
 // gif は静止サムネイルのあと、動くサムネイル(/index/anim/…webp)に差し替える
 // 端末キャッシュ(Cache Storage): 原寸 150 枚・サムネイル 4000 枚・動くサムネイル 150 枚まで。⚙ から整理できる
-const FULL_CACHE='gt-full-v1',THUMB_CACHE='gt-thumb-v1',ANIM_CACHE='gt-anim-v1',THUMB_DISK=4000,ANIM_DISK=150;
-async function trimCache(name,max){  // keys() は追加順。古いものから捨てる
-  try{const c=await caches.open(name),ks=await c.keys();for(const k of ks.slice(0,Math.max(0,ks.length-max)))await c.delete(k)}catch(e){}
+const FULL_CACHE='gt-full-v1',THUMB_CACHE='gt-thumb-v1',ANIM_CACHE='gt-anim-v1';
+// 端末キャッシュは「容量の上限(MB)」で管理する。サイズ・保存時刻は IndexedDB(gt_cache)に控える
+// (Cache Storage からは大きさが分からないため)。上限を超えたら原寸→古い順に捨てる
+const BUDGET=()=>Math.max(100,+LS('gt_budget')||3000)*1048576;
+const CPFX={'/__full/':FULL_CACHE,'/__thumb/':THUMB_CACHE,'/__anim/':ANIM_CACHE};
+const cacheOf=k=>CPFX[k.slice(0,k.indexOf('/',1)+1)];
+let cmeta=null,cmetaTotal=0,mdbP=null;  // cmeta: Map<キー, {s: バイト数, t: 保存時刻}>
+const mdb=()=>mdbP??=new Promise((ok,ng)=>{const r=indexedDB.open('gt_cache',1);r.onupgradeneeded=()=>r.result.createObjectStore('m');r.onsuccess=()=>ok(r.result);r.onerror=()=>ng(r.error)});
+async function metaLoad(){
+  if(cmeta)return cmeta;
+  const m=new Map();let tot=0;
+  try{const d=await mdb();await new Promise(ok=>{const q=d.transaction('m').objectStore('m').openCursor();
+    q.onsuccess=()=>{const c=q.result;if(c){m.set(c.key,c.value);tot+=c.value.s;c.continue()}else ok()};q.onerror=()=>ok()})}catch(e){}
+  if(!cmeta){cmeta=m;cmetaTotal=tot}
+  return cmeta;
 }
+async function metaSet(k,v){  // v=null で削除
+  await metaLoad();
+  const o=cmeta.get(k);if(o)cmetaTotal-=o.s;
+  if(v){cmeta.set(k,v);cmetaTotal+=v.s}else cmeta.delete(k);
+  try{const t=(await mdb()).transaction('m','readwrite');v?t.objectStore('m').put(v,k):t.objectStore('m').delete(k)}catch(e){}
+}
+async function cachePut(key,blob){
+  try{const c=await caches.open(cacheOf(key));await c.put(key,new Response(blob,{headers:{'Content-Type':blob.type}}))}catch(e){return false}
+  await metaSet(key,{s:blob.size,t:Date.now()});return true;
+}
+async function cacheDel(k){try{await (await caches.open(cacheOf(k))).delete(k)}catch(e){}await metaSet(k,null)}
+async function enforce(keep){  // 上限を超えた分を、原寸 → サムネイルの順に古いものから捨てる
+  await metaLoad();const b=BUDGET();
+  if(cmetaTotal<=b)return;
+  const ks=[...cmeta.entries()].sort((x,y)=>(x[0].startsWith('/__full/')?0:1)-(y[0].startsWith('/__full/')?0:1)||x[1].t-y[1].t);
+  for(const [k] of ks){if(cmetaTotal<=b)break;if(k!==keep)await cacheDel(k)}
+}
+async function metaSync(){  // 控えと実際のキャッシュを突き合わせる(控えのない既存分は大きさを測る / 消えた分は控えから外す)
+  await metaLoad();
+  const seen=new Set();
+  for(const name of [FULL_CACHE,THUMB_CACHE,ANIM_CACHE]){
+    let c;try{c=await caches.open(name)}catch(e){continue}
+    for(const r of await c.keys()){
+      const k=r.url.slice(r.url.indexOf('/__'));seen.add(k);
+      if(!cmeta.has(k)){try{const m=await c.match(r);await metaSet(k,{s:(await m.blob()).size,t:0})}catch(e){}}
+    }
+  }
+  for(const k of [...cmeta.keys()])if(!seen.has(k))await metaSet(k,null);
+}
+async function metaClear(){cmeta=new Map();cmetaTotal=0;try{(await mdb()).transaction('m','readwrite').objectStore('m').clear()}catch(e){}}
 const animCache=new Map();
 async function animate(img){
   const id=img.dataset.id;
@@ -165,7 +227,7 @@ async function animate(img){
       try{c=await caches.open(ANIM_CACHE);const m=await c.match(key);if(m)blob=await m.blob()}catch(e){}
       if(!blob){
         blob=await downloadBlob(`/index/anim/${id.slice(0,2)}/${id}.webp`);
-        try{if(c){await c.put(key,new Response(blob,{headers:{'Content-Type':blob.type}}));await trimCache(ANIM_CACHE,ANIM_DISK)}}catch(e){}
+        if(c){await cachePut(key,blob);await enforce(key)}
       }
       return URL.createObjectURL(blob);
     })());
@@ -205,9 +267,9 @@ async function pump(){
       j.entries.forEach((e,k)=>{if(e['.tag']==='success'){
         const blob=new Blob([Uint8Array.from(atob(e.thumbnail),c=>c.charCodeAt(0))],{type:'image/jpeg'});
         const u=URL.createObjectURL(blob);thumbCache.set(rest[k].dataset.id,u);rest[k].src=u;if(rest[k].dataset.a)animate(rest[k]);
-        if(tc)puts.push(tc.put('/__thumb/'+rest[k].dataset.id,new Response(blob,{headers:{'Content-Type':'image/jpeg'}})).catch(()=>{}));
+        puts.push(cachePut('/__thumb/'+rest[k].dataset.id,blob));
       }});
-      await Promise.all(puts);if(puts.length)await trimCache(THUMB_CACHE,THUMB_DISK);
+      await Promise.all(puts);if(puts.length)await enforce();
     }catch(e){console.warn(e)}
   }}finally{thumbBusy.v=false}
 }
@@ -297,7 +359,16 @@ $('#q').addEventListener('input',()=>{clearTimeout($('#q')._t);$('#q')._t=setTim
 // ---- 拡大 ----
 // 原寸画像のキャッシュ: メモリ(blob URL, 直近24枚)+ Cache Storage(端末に残る, 直近150枚)。
 // 取得は files/download(認可ヘッダ付き)。一度見た画像・先読みした前後の画像はスピナー無しで出る
-const fullSize=new Map(),fullMem=new Map(),fullPending=new Map(),FULL_MEM=24,FULL_DISK=150;
+const fullSize=new Map(),fullMem=new Map(),fullPending=new Map(),FULL_MEM=24;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function dlFull(it){  // 原寸を Dropbox から取る。429(レート制限)は待って取り直す
+  for(let n=0;;n++){
+    const r=await fetch('https://content.dropboxapi.com/2/files/download',{method:'POST',headers:{Authorization:'Bearer '+await token(),'Dropbox-API-Arg':JSON.stringify({path:imgPath(it)})}});
+    if(r.status===429&&n<5){await sleep((+r.headers.get('Retry-After')||10)*1000);continue}
+    if(!r.ok){const e=new Error('download '+r.status);e.status=r.status;throw e}
+    return r.blob();
+  }
+}
 async function getFull(it){
   const id=it.i;
   if(fullMem.has(id)){const u=fullMem.get(id);fullMem.delete(id);fullMem.set(id,u);return u}  // LRU更新
@@ -309,11 +380,8 @@ async function getFull(it){
       blob=new Blob([await GT_CRYPTO.decrypt(pkey,await downloadBuf(`/protected/${id.slice(0,2)}/${id}.bin`),id)],{type:mime});
     }else try{cache=await caches.open(FULL_CACHE);const m=await cache.match(key);if(m)blob=await m.blob()}catch(e){}
     if(!blob){
-      const r=await fetch('https://content.dropboxapi.com/2/files/download',{method:'POST',headers:{Authorization:'Bearer '+await token(),'Dropbox-API-Arg':JSON.stringify({path:imgPath(it)})}});
-      if(!r.ok)throw new Error('download '+r.status);
-      blob=await r.blob();
-      try{if(cache){await cache.put(key,new Response(blob,{headers:{'Content-Type':blob.type}}));
-        const ks=await cache.keys();for(const k of ks.slice(0,Math.max(0,ks.length-FULL_DISK)))await cache.delete(k)}}catch(e){}
+      blob=await dlFull(it);
+      if(cache){await cachePut(key,blob);await enforce(key)}
     }
     const u=URL.createObjectURL(blob);
     fullSize.set(id,blob.size);
@@ -502,6 +570,69 @@ async function loadIndex(){
   initProtected();
 }
 
+// ---- 先読み(⬇️): Wi-Fi のときに手で押す。サムネイル(新しい順)→ 閲覧数上位の原寸(Mac の /index/hot.json + この端末の履歴)----
+// 上限(⚙)に達したら止める。暗号化した画像(🔒)・mp4 は対象外。画面を開いたままにする必要がある(iOS はバックグラウンドで続けられない)
+const pf={run:false,stop:false};
+function pfStatus(t){$('#pfs').textContent=t?' · '+t:''}
+async function pfRpc(ep,arg){  // 429・通信エラーは待って取り直す
+  for(let n=0;;n++){
+    try{return await rpc('content.dropboxapi.com',ep,arg)}
+    catch(e){if(pf.stop||n>=5||(e.status&&e.status!==429&&e.status<500))throw e;await sleep(Math.min(60,5*2**n)*1000)}
+  }
+}
+async function prefetch(){
+  if(pf.run){pf.stop=true;pfStatus('中断しています…');return}
+  if(!items.length)return;
+  if(!confirm('端末に先読みします(Wi-Fi 接続中に実行してください。画面を開いたまま)。上限 '+Math.round(BUDGET()/1048576)+'MB まで。始めますか?'))return;
+  pf.run=true;pf.stop=false;$('#pf').classList.add('on');
+  let wl=null;const lockWake=async()=>{try{wl=await navigator.wakeLock.request('screen')}catch(e){}};lockWake();
+  const onVis=()=>{if(document.visibilityState==='visible'&&pf.run)lockWake()};document.addEventListener('visibilitychange',onVis);
+  const mb=()=>Math.round(cmetaTotal/1048576)+'/'+Math.round(BUDGET()/1048576)+'MB';
+  let msg='';
+  try{
+    pfStatus('準備中…');await metaSync();
+    const pub=items.filter(it=>!it.x);
+    // 1) サムネイル: 上限の4割まで(残りは原寸に使う)
+    const tl=pub.filter(it=>!cmeta.has('/__thumb/'+it.i));
+    let done=0;
+    for(let k=0;k<tl.length&&!pf.stop;k+=25){
+      if(cmetaTotal>=BUDGET()*0.4)break;
+      const b=tl.slice(k,k+25);
+      const j=await pfRpc('files/get_thumbnail_batch',{entries:b.map(it=>({path:imgPath(it),format:'jpeg',size:'w256h256',mode:'bestfit'}))});
+      for(let n=0;n<j.entries.length;n++){const e=j.entries[n];
+        if(e['.tag']==='success')await cachePut('/__thumb/'+b[n].i,new Blob([Uint8Array.from(atob(e.thumbnail),c=>c.charCodeAt(0))],{type:'image/jpeg'}))}
+      done+=b.length;pfStatus(`サムネ ${done}/${tl.length} · ${mb()}`);
+    }
+    // 2) 閲覧数上位の原寸
+    if(!pf.stop){
+      let ids=[];try{ids=(await download('/index/hot.json')).ids||[]}catch(e){}
+      const local=Object.entries(visits).sort((a,b)=>b[1].n-a[1].n||b[1].t-a[1].t).map(([id])=>id);
+      const byId=new Map(pub.map(it=>[it.i,it]));
+      const fl=[...new Set([...ids,...local])].map(id=>byId.get(id)).filter(it=>it&&(it.e||'').toLowerCase()!=='mp4'&&!cmeta.has('/__full/'+it.i));
+      let n=0,full=false,fails=0;
+      const worker=async()=>{while(!pf.stop&&!full&&fails<5){
+        const it=fl[n++];if(!it)return;
+        try{
+          const blob=await dlFull(it);
+          if(cmetaTotal+blob.size>BUDGET()){full=true;return}
+          await cachePut('/__full/'+it.i,blob);fails=0;
+        }catch(e){fails++;console.warn(e);await sleep(3000)}
+        pfStatus(`原寸 ${Math.min(n,fl.length)}/${fl.length} · ${mb()}`);
+      }};
+      await Promise.all([worker(),worker(),worker()]);
+      msg=full?'上限に達しました':fails>=5?'通信エラーで止めました':n>=fl.length?'完了':'';
+    }
+    if(pf.stop)msg='中断しました';
+  }catch(e){console.warn(e);msg='失敗: '+(e.message||e)}
+  finally{
+    pf.run=false;pf.stop=false;$('#pf').classList.remove('on');
+    document.removeEventListener('visibilitychange',onVis);try{wl&&wl.release()}catch(e){}
+    pfStatus((msg||'終了')+' · '+mb());setTimeout(()=>{if(!pf.run)pfStatus('')},8000);
+    showCache();
+  }
+}
+$('#pf').onclick=prefetch;
+
 // ---- 暗号化した画像(protected) ----
 // /index/crypto.json(salt と検証データ)があれば 🔒 を出す。パスフレーズから導出した鍵(取り出し不可の CryptoKey)は
 // この端末の IndexedDB に残し、次からは入力不要。一覧(/index/protected.bin)を復号して通常の一覧に混ぜる。
@@ -548,9 +679,10 @@ $('#pwf').onsubmit=async e=>{
   finally{b.disabled=false;$('#pwi').value=''}
 };
 function showBuild(){
-  $('#bt').textContent=window.BUILD_INFO?`build ${BUILD_INFO.sha} (${BUILD_INFO.time})`:'';
+  $('#bt').textContent=window.BUILD_INFO?`build ${BUILD_INFO.sha} (${BUILD_INFO.time}) · `:'';
   const n=Object.keys(visits).length,ex=+LS('gt_exported')||0;
-  $('#cfginfo').textContent=`閲覧履歴 ${n} 枚 / 未反映のメモ ${Object.keys(notes).length} 件 / 最終書き出し ${ex?new Date(ex).toLocaleString('ja-JP',{dateStyle:'short',timeStyle:'short'}):'なし'}`;
+  $('#cfgvis').textContent=`${n}枚 / 未反映のメモ ${Object.keys(notes).length}件`;
+  $('#cfgexp').textContent=ex?new Date(ex).toLocaleString('ja-JP',{dateStyle:'short',timeStyle:'short'}):'なし';
 }
 showBuild();
 {const c=$('#cfg'),g=$('#gear');
@@ -562,15 +694,18 @@ async function showCache(){
   const el=$('#cachesz');if(!el)return;
   const n=async name=>{try{return (await (await caches.open(name)).keys()).length}catch(e){return 0}};
   const [f,t,a]=await Promise.all([n(FULL_CACHE),n(THUMB_CACHE),n(ANIM_CACHE)]);
-  let u=null;try{u=(await navigator.storage.estimate()).usage}catch(e){}
-  el.textContent=(u!=null?fmtSize(u):'?')+`(原寸 ${f}・サムネ ${t}・gif ${a})`;
+  await metaSync();
+  el.textContent=`${fmtSize(cmetaTotal)}(上限 ${Math.round(BUDGET()/1048576)}MB)`;
+  $('#cache-f').textContent=f+'枚';$('#cache-t').textContent=t+'枚';$('#cache-a').textContent=a+'枚';
 }
 $('#cachedel').onclick=async()=>{
   if(!confirm('端末に保存した画像キャッシュを削除しますか?(次に見るとき Dropbox から取り直します。閲覧履歴・メモ・設定は消えません)'))return;
   for(const k of [FULL_CACHE,THUMB_CACHE,ANIM_CACHE])try{await caches.delete(k)}catch(e){}
-  thumbCache.clear();animCache.clear();fullMem.clear();
+  await metaClear();thumbCache.clear();animCache.clear();fullMem.clear();
   showCache();
 };
+$('#budget').value=Math.round(BUDGET()/1048576);
+$('#budget').onchange=async e=>{const v=Math.max(100,Math.round(+e.target.value)||3000);e.target.value=v;LSset('gt_budget',String(v));await enforce();showCache()};
 $('#expv').onclick=exportVisits;
 $('#imgurid').value=LS('gt_imgur')||'';
 $('#imgurid').oninput=e=>LSset('gt_imgur',e.target.value.trim()||null);
