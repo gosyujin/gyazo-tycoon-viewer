@@ -44,6 +44,11 @@ button{cursor:pointer}
 #cfg[hidden]{display:none}
 .cfgb{display:flex;gap:8px;justify-content:center;margin-top:8px}
 #lbx{position:absolute;top:8px;right:8px;z-index:2;font-size:18px}
+#lbu{margin:28px 0 8px;padding-top:12px;border-top:1px dashed var(--line)}  /* 誤タップを避けるため、他のボタンから離して置く */
+#lbu .msg2{margin-top:6px;color:var(--dim);word-break:break-all}
+#lbu .ok{color:#7ee2a0}#lbu .ng{color:#ff8a8a}
+#lbu .rec{margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#imgurid{width:100%;margin-top:8px;font-size:16px}
 </style>
 </head>
 <body>
@@ -69,6 +74,7 @@ button{cursor:pointer}
   <span id="bt"></span>
   <div id="cfg" hidden>
     <div id="cfginfo"></div>
+    <input id="imgurid" placeholder="imgur Client-ID(匿名アップロード用)" autocomplete="off" autocapitalize="off" spellcheck="false">
     <div class="cfgb"><button id="expv">閲覧履歴・メモを書き出す</button><button id="out">認可を取り消す</button></div>
   </div>
 </div>
@@ -253,6 +259,63 @@ async function getFull(it){
   fullPending.set(id,p);
   try{return await p}finally{fullPending.delete(id)}
 }
+// ---- imgur 匿名アップロード ----
+// Client-ID は端末の localStorage(設定 ⚙ で入力)。アップロード後は URL をクリップボードへ。
+// deletehash は画像ごとに localStorage へ残し、拡大表示から imgur 上の画像を削除できる(再アップロードの重複防止はしない)
+const IMGUR='https://api.imgur.com/3/image',IMGUR_MAX=20*1024*1024;  // gif 以外の上限
+const imgurRecs=()=>{try{return JSON.parse(LS('gt_imgur_up')||'{}')}catch(e){return {}}};
+const imgurSave=o=>LSset('gt_imgur_up',JSON.stringify(o));
+const imgurErr=async r=>{
+  if(r.status===429)return 'imgur のレート制限です。しばらく待ってください';
+  let m='';try{m=(await r.json()).data.error;if(typeof m==='object')m=m.message}catch(e){}
+  return 'imgur '+r.status+(m?': '+m:'');
+};
+async function imgurUpload(it){
+  const id=LS('gt_imgur');if(!id)throw new Error('設定(⚙)で imgur の Client-ID を入力してください');
+  const blob=await (await fetch(await getFull(it))).blob();
+  if(it.e!=='gif'&&blob.size>IMGUR_MAX)throw new Error('20MB を超えています('+(blob.size/1048576).toFixed(1)+'MB)');
+  const f=new FormData();f.append('image',blob,it.i+'.'+it.e);f.append('type','file');
+  const r=await fetch(IMGUR,{method:'POST',headers:{Authorization:'Client-ID '+id},body:f});
+  if(!r.ok)throw new Error(await imgurErr(r));
+  const d=(await r.json()).data;
+  const o=imgurRecs();(o[it.i]=o[it.i]||[]).push({link:d.link,hash:d.deletehash,t:Date.now()});imgurSave(o);
+  return d;
+}
+function renderImgur(it,msg){
+  const el=$('#lbu');if(!el)return;
+  const recs=imgurRecs()[it.i]||[];
+  el.innerHTML=it.e==='mp4'?'<span style="color:var(--dim)">動画は imgur へのアップロードに対応していません</span>'
+    :`<button id="lbimg">imgur にアップロード</button>${msg?`<div class="msg2 ${msg.ok?'ok':'ng'}">${esc(msg.t)}</div>`:''}`
+    +recs.map(r=>`<div class="rec"><a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.link)}</a><button class="lbdel" data-h="${esc(r.hash)}">imgur から削除</button></div>`).join('');
+}
+async function imgurClick(){
+  const it=filtered[cur];if(!it)return;
+  const b=$('#lbimg');b.disabled=true;b.textContent='アップロード中…';
+  let data=null,copied=false,err=null;
+  try{
+    const up=imgurUpload(it).then(d=>(data=d));
+    // iOS Safari はユーザー操作の直後でないとコピーできないので、Promise のまま ClipboardItem に渡す
+    if(window.ClipboardItem&&navigator.clipboard&&navigator.clipboard.write){
+      try{await navigator.clipboard.write([new ClipboardItem({'text/plain':up.then(d=>new Blob([d.link],{type:'text/plain'}))})]);copied=true}catch(e){}
+    }
+    data=await up;
+    if(!copied&&navigator.clipboard&&navigator.clipboard.writeText){try{await navigator.clipboard.writeText(data.link);copied=true}catch(e){}}
+  }catch(e){err=e}
+  if(!filtered[cur]||filtered[cur].i!==it.i)return;  // 待っている間に別の画像へ移った
+  renderImgur(it,err?{t:'失敗: '+(err.message||err)}:{ok:copied,t:copied?'URL をコピーしました: '+data.link:'アップロードしました(コピーに失敗。下の URL をコピーしてください)'});
+}
+async function imgurDelete(btn){
+  const it=filtered[cur],h=btn.dataset.h;if(!it||!confirm('imgur 上の画像を削除しますか?'))return;
+  btn.disabled=true;
+  let msg;
+  try{
+    const r=await fetch(IMGUR+'/'+h,{method:'DELETE',headers:{Authorization:'Client-ID '+LS('gt_imgur')}});
+    if(!r.ok&&r.status!==404)throw new Error(await imgurErr(r));
+    const o=imgurRecs();o[it.i]=(o[it.i]||[]).filter(x=>x.hash!==h);if(!o[it.i].length)delete o[it.i];imgurSave(o);
+    msg={ok:true,t:'imgur から削除しました'};
+  }catch(e){btn.disabled=false;msg={t:'削除に失敗: '+(e.message||e)}}
+  if(filtered[cur]&&filtered[cur].i===it.i)renderImgur(it,msg);
+}
 let cur=-1,lbTok=0;
 async function openLb(k){
   const it=filtered[k],lb=$('#lb'),tok=++lbTok;
@@ -264,7 +327,8 @@ async function openLb(k){
   $('#lbm').innerHTML='<img alt="" src="'+(hit||thumbCache.get(it.i)||'')+'">';
   const meta=[it.t,it.s,it.ti&&esc(it.ti),it.g&&esc(it.g)].filter(Boolean).join(' / ');
   $('#lbi').innerHTML=`<div>${meta}</div>`+(it.u?`<div><a href="${esc(it.u)}" target="_blank" rel="noopener">${esc(it.u)}</a></div>`:'')
-    +`<pre id="lbn">${esc(noteOf(it))}</pre><div><button id="lbe">${notes[it.i]?'メモを編集(未反映)':'メモを編集'}</button></div>`+(it.b?`<pre>${esc(it.b)}</pre>`:'');
+    +`<pre id="lbn">${esc(noteOf(it))}</pre><div><button id="lbe">${notes[it.i]?'メモを編集(未反映)':'メモを編集'}</button></div>`+`<div id="lbu"></div>`+(it.b?`<pre>${esc(it.b)}</pre>`:'');
+  renderImgur(it);
   try{
     const url=await getFull(it);
     // 先にデコードを済ませてから差し替える(読み込み中はサムネイルのまま)
@@ -276,7 +340,9 @@ async function openLb(k){
   }catch(e){console.warn(e);if(tok===lbTok)$('#lbm').className='failed'}
 }
 $('#lbi').addEventListener('click',e=>{
-  if(e.target.id==='lbe'){
+  if(e.target.id==='lbimg')imgurClick();
+  else if(e.target.classList.contains('lbdel'))imgurDelete(e.target);
+  else if(e.target.id==='lbe'){
     const it=filtered[cur];if(!it)return;
     $('#lbn').outerHTML=`<textarea id="lbt" rows="5" style="width:100%;box-sizing:border-box">${esc(noteOf(it))}</textarea>`;
     $('#lbe').outerHTML='<button id="lbs">保存</button> <button id="lbc">キャンセル</button>';
@@ -349,6 +415,8 @@ g.onclick=e=>{e.stopPropagation();tg(c.hidden)};
 document.addEventListener('click',e=>{if(!c.hidden&&!c.contains(e.target))tg(false)});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!c.hidden)tg(false)});}
 $('#expv').onclick=exportVisits;
+$('#imgurid').value=LS('gt_imgur')||'';
+$('#imgurid').oninput=e=>LSset('gt_imgur',e.target.value.trim()||null);
 $('#login').onclick=startLogin;
 $('#out').onclick=()=>{if(confirm('この端末の認可を消しますか?')){['gt_refresh','gt_key'].forEach(k=>LSset(k,null));location.reload()}};
 (async()=>{
