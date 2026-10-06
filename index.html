@@ -48,6 +48,7 @@ button{cursor:pointer}
 #lbu .msg2{margin-top:6px;color:var(--dim);word-break:break-all}
 #lbu .ok{color:#7ee2a0}#lbu .ng{color:#ff8a8a}
 #lbu .rec{margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#lbsz.big{color:#ff6b6b;font-weight:bold}
 #imgurid{width:100%;margin-top:8px;font-size:16px}
 </style>
 </head>
@@ -236,7 +237,7 @@ $('#q').addEventListener('input',()=>{clearTimeout($('#q')._t);$('#q')._t=setTim
 // ---- 拡大 ----
 // 原寸画像のキャッシュ: メモリ(blob URL, 直近24枚)+ Cache Storage(端末に残る, 直近150枚)。
 // 取得は files/download(認可ヘッダ付き)。一度見た画像・先読みした前後の画像はスピナー無しで出る
-const fullMem=new Map(),fullPending=new Map(),FULL_MEM=24,FULL_DISK=150;
+const fullSize=new Map(),fullMem=new Map(),fullPending=new Map(),FULL_MEM=24,FULL_DISK=150;
 async function getFull(it){
   const id=it.i;
   if(fullMem.has(id)){const u=fullMem.get(id);fullMem.delete(id);fullMem.set(id,u);return u}  // LRU更新
@@ -252,6 +253,7 @@ async function getFull(it){
         const ks=await cache.keys();for(const k of ks.slice(0,Math.max(0,ks.length-FULL_DISK)))await cache.delete(k)}}catch(e){}
     }
     const u=URL.createObjectURL(blob);
+    fullSize.set(id,blob.size);
     fullMem.set(id,u);
     while(fullMem.size>FULL_MEM){const [oid,ou]=fullMem.entries().next().value;fullMem.delete(oid);URL.revokeObjectURL(ou)}
     return u;
@@ -286,7 +288,7 @@ function renderImgur(it,msg){
   const recs=imgurRecs()[it.i]||[];
   el.innerHTML=it.e==='mp4'?'<span style="color:var(--dim)">動画は imgur へのアップロードに対応していません</span>'
     :`<button id="lbimg">imgur にアップロード</button>${msg?`<div class="msg2 ${msg.ok?'ok':'ng'}">${esc(msg.t)}</div>`:''}`
-    +recs.map(r=>`<div class="rec"><a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.link)}</a><button class="lbdel" data-h="${esc(r.hash)}">imgur から削除</button></div>`).join('');
+    +recs.map(r=>`<div class="rec"><a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.link)}</a><button class="lbcp" data-l="${esc(r.link)}">URLをコピー</button><button class="lbdel" data-h="${esc(r.hash)}">imgur から削除</button></div>`).join('');
 }
 async function imgurClick(){
   const it=filtered[cur];if(!it)return;
@@ -304,6 +306,14 @@ async function imgurClick(){
   if(!filtered[cur]||filtered[cur].i!==it.i)return;  // 待っている間に別の画像へ移った
   renderImgur(it,err?{t:'失敗: '+(err.message||err)}:{ok:copied,t:copied?'URL をコピーしました: '+data.link:'アップロードしました(コピーに失敗。下の URL をコピーしてください)'});
 }
+async function copyUrl(btn){
+  const l=btn.dataset.l;let ok=false;
+  try{await navigator.clipboard.writeText(l);ok=true}catch(e){
+    try{const t=document.createElement('textarea');t.value=l;t.style.cssText='position:fixed;opacity:0';document.body.append(t);t.select();ok=document.execCommand('copy');t.remove()}catch(e2){}
+  }
+  btn.textContent=ok?'コピーしました':'コピー失敗';
+  setTimeout(()=>{btn.textContent='URLをコピー'},1500);
+}
 async function imgurDelete(btn){
   const it=filtered[cur],h=btn.dataset.h;if(!it||!confirm('imgur 上の画像を削除しますか?'))return;
   btn.disabled=true;
@@ -316,6 +326,13 @@ async function imgurDelete(btn){
   }catch(e){btn.disabled=false;msg={t:'削除に失敗: '+(e.message||e)}}
   if(filtered[cur]&&filtered[cur].i===it.i)renderImgur(it,msg);
 }
+// 画像サイズ(原寸を取得してから分かる)。imgur の上限 20MB を超えていたら赤字で強調
+const fmtSize=n=>n>=1048576?(n/1048576).toFixed(1)+'MB':Math.max(1,Math.round(n/1024))+'KB';
+function showSize(it,tok){
+  const el=$('#lbsz'),n=fullSize.get(it.i);if(!el||tok!==lbTok||n==null)return;
+  const big=n>IMGUR_MAX;
+  el.className=big?'big':'';el.textContent=fmtSize(n)+(big?'(20MB超: imgur に上げられないことがあります)':'');
+}
 let cur=-1,lbTok=0;
 async function openLb(k){
   const it=filtered[k],lb=$('#lb'),tok=++lbTok;
@@ -326,11 +343,12 @@ async function openLb(k){
   $('#lbm').className=hit?'':'loading';
   $('#lbm').innerHTML='<img alt="" src="'+(hit||thumbCache.get(it.i)||'')+'">';
   const meta=[it.t,it.s,it.ti&&esc(it.ti),it.g&&esc(it.g)].filter(Boolean).join(' / ');
-  $('#lbi').innerHTML=`<div>${meta}</div>`+(it.u?`<div><a href="${esc(it.u)}" target="_blank" rel="noopener">${esc(it.u)}</a></div>`:'')
+  $('#lbi').innerHTML=`<div>${meta} <span id="lbsz"></span></div>`+(it.u?`<div><a href="${esc(it.u)}" target="_blank" rel="noopener">${esc(it.u)}</a></div>`:'')
     +`<pre id="lbn">${esc(noteOf(it))}</pre><div><button id="lbe">${notes[it.i]?'メモを編集(未反映)':'メモを編集'}</button></div>`+`<div id="lbu"></div>`+(it.b?`<pre>${esc(it.b)}</pre>`:'');
   renderImgur(it);
   try{
     const url=await getFull(it);
+    showSize(it,tok);
     // 先にデコードを済ませてから差し替える(読み込み中はサムネイルのまま)
     const im=new Image();im.src=url;
     await im.decode();
@@ -341,6 +359,7 @@ async function openLb(k){
 }
 $('#lbi').addEventListener('click',e=>{
   if(e.target.id==='lbimg')imgurClick();
+  else if(e.target.classList.contains('lbcp'))copyUrl(e.target);
   else if(e.target.classList.contains('lbdel'))imgurDelete(e.target);
   else if(e.target.id==='lbe'){
     const it=filtered[cur];if(!it)return;
