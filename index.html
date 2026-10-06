@@ -35,6 +35,11 @@ button{cursor:pointer}
 #lbi{height:25vh;overflow:auto;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--panel);font-size:12px}
 #lbi a{color:var(--accent);word-break:break-all}
 #lbi pre{white-space:pre-wrap;word-break:break-all;color:var(--dim);margin:6px 0 0}
+@media (min-width:900px){  /* PC: 説明欄は画面下ではなく右に出す(閉じるボタンは画像側の右上へ) */
+#lb{flex-direction:row}
+#lbi{flex:0 0 400px;height:auto;padding:14px 16px;border-left:1px solid var(--line)}
+#lbx{right:416px}
+}
 #lbm{position:relative}
 #lbm.loading img,#lbm.failed img{filter:blur(3px) brightness(.7);-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}  /* 荒いサムネイルは保存できないようにする */
 #lbm.loading::after{content:"";position:absolute;top:50%;left:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border:4px solid #fff5;border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;pointer-events:none}
