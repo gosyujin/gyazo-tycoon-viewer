@@ -35,6 +35,9 @@ button{cursor:pointer}
 #lbi{height:25vh;overflow:auto;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--panel);font-size:12px}
 #lbi a{color:var(--accent);word-break:break-all}
 #lbi pre{white-space:pre-wrap;word-break:break-all;color:var(--dim);margin:6px 0 0}
+@media (min-width:900px){  /* PC: グリッドは gyazo-tycoon の一覧と同じ寸法 */
+#grid{padding:12px 16px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
+}
 @media (min-width:900px){  /* PC: 説明欄は画面下ではなく右に出す(閉じるボタンは画像側の右上へ) */
 #lb{flex-direction:row}
 #lbi{flex:0 0 400px;height:auto;padding:14px 16px;border-left:1px solid var(--line)}
@@ -103,6 +106,8 @@ button{cursor:pointer}
   <section>
     <label for="imgurid">imgur Client-ID</label>
     <input id="imgurid" placeholder="匿名アップロード用" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <label for="gyazotk">Gyazo アクセストークン</label>
+    <input id="gyazotk" placeholder="アップロード用(Gyazo API のアクセストークン)" autocomplete="off" autocapitalize="off" spellcheck="false">
     <label><input id="trash" type="checkbox"> ゴミも表示する</label>
     <label for="budget">キャッシュの上限(MB)</label>
     <input id="budget" type="number" inputmode="numeric" min="100" step="100">
@@ -420,12 +425,38 @@ async function imgurUpload(it){
   const o=imgurRecs();(o[it.i]=o[it.i]||[]).push({link:d.link,hash:d.deletehash,t:Date.now()});imgurSave(o);
   return d;
 }
-function renderImgur(it,msg){
+const gyazoRecs=()=>{try{return JSON.parse(LS('gt_gyazo_up')||'{}')}catch(e){return {}}};
+const gyazoSave=o=>LSset('gt_gyazo_up',JSON.stringify(o));
+async function gyazoUpload(it){
+  const tk=LS('gt_gyazo');if(!tk)throw new Error('設定(⚙)で Gyazo のアクセストークンを入力してください');
+  const blob=await (await fetch(await getFull(it))).blob();
+  const f=new FormData();f.append('access_token',tk);f.append('imagedata',blob,it.i+'.'+it.e);
+  const r=await fetch('https://upload.gyazo.com/api/upload',{method:'POST',body:f});
+  if(!r.ok)throw new Error('Gyazo '+r.status+(r.status===401?'(トークンが不正です)':''));
+  const d=await r.json(),link=d.permalink_url||d.url;
+  const o=gyazoRecs(),a=o[it.i]=o[it.i]||[];
+  if(!a.some(x=>x.link===link))a.push({link,t:Date.now()});  // 同じ画像は同じ URL になるので重複は積まない
+  gyazoSave(o);
+  return {link};
+}
+function renderImgur(it,msg,gmsg){
   const el=$('#lbu');if(!el)return;
-  const recs=imgurRecs()[it.i]||[];
-  el.innerHTML=it.x?'<span style="color:var(--dim)">暗号化した画像は imgur にアップロードできません</span>':it.e==='mp4'?'<span style="color:var(--dim)">動画は imgur へのアップロードに対応していません</span>'
-    :`<button id="lbimg">imgur にアップロード</button>${msg?`<div class="msg2 ${msg.ok?'ok':'ng'}">${esc(msg.t)}</div>`:''}`
-    +recs.map(r=>`<div class="rec"><a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.link)}</a><button class="lbcp" data-l="${esc(r.link)}">コピー</button><button class="lbdel" data-h="${esc(r.hash)}">削除</button></div>`).join('');
+  const recs=imgurRecs()[it.i]||[],grecs=gyazoRecs()[it.i]||[];
+  const m=x=>x?`<div class="msg2 ${x.ok?'ok':'ng'}">${esc(x.t)}</div>`:'';
+  const cp=r=>`<a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.link)}</a><button class="lbcp" data-l="${esc(r.link)}">コピー</button>`;
+  if(it.x){el.innerHTML='<span style="color:var(--dim)">暗号化した画像はアップロードできません</span>';return}
+  el.innerHTML=`<button id="lbgz">Gyazo にアップロード</button>${m(gmsg)}`
+    +grecs.map(r=>`<div class="rec">${cp(r)}</div>`).join('')
+    +(it.e==='mp4'?'<div style="color:var(--dim);margin-top:12px">動画は imgur へのアップロードに対応していません</div>'
+    :`<div style="margin-top:12px"><button id="lbimg">imgur にアップロード</button></div>${m(msg)}`
+    +recs.map(r=>`<div class="rec">${cp(r)}<button class="lbdel" data-h="${esc(r.hash)}">削除</button></div>`).join(''));
+}
+async function gyazoClick(){
+  const it=filtered[cur];if(!it)return;
+  const b=$('#lbgz');b.disabled=true;b.textContent='アップロード中…';
+  let msg;
+  try{const d=await gyazoUpload(it);msg={ok:true,t:'アップロードしました: '+d.link}}catch(e){msg={t:'失敗: '+(e.message||e)}}
+  if(filtered[cur]&&filtered[cur].i===it.i)renderImgur(it,null,msg);
 }
 async function imgurClick(){
   const it=filtered[cur];if(!it)return;
@@ -508,6 +539,7 @@ async function openLb(k){
 }
 $('#lbi').addEventListener('click',e=>{
   if(e.target.id==='lbimg')imgurClick();
+  else if(e.target.id==='lbgz')gyazoClick();
   else if(e.target.classList.contains('lbcp'))copyUrl(e.target);
   else if(e.target.classList.contains('lbdel'))imgurDelete(e.target);
   else if(e.target.id==='lbe'){
@@ -736,6 +768,8 @@ $('#budget').onchange=async e=>{const v=Math.max(100,Math.round(+e.target.value)
 $('#expv').onclick=exportVisits;
 $('#imgurid').value=LS('gt_imgur')||'';
 $('#imgurid').oninput=e=>LSset('gt_imgur',e.target.value.trim()||null);
+$('#gyazotk').value=LS('gt_gyazo')||'';
+$('#gyazotk').oninput=e=>LSset('gt_gyazo',e.target.value.trim()||null);
 $('#login').onclick=startLogin;
 $('#out').onclick=()=>{if(confirm('この端末の認可を消しますか?')){['gt_refresh','gt_key'].forEach(k=>LSset(k,null));location.reload()}};
 (async()=>{

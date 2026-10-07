@@ -7,6 +7,10 @@ gyazo-tycoon の外出先用ビューア(静的ページ1枚)。GitHub Pages に
 
 Redirect URI に、公開した Pages の URL(例 `https://<user>.github.io/gyazo-tycoon-viewer/`)を Dropbox App Console で登録すること。
 
+## Gyazo へのアップロード
+
+拡大表示の「Gyazo にアップロード」で表示中の画像を Gyazo にアップロードし、ボタンの下に URL を表示する(同じ画像は同じ URL になるので通常は 1 件)。⚙ 設定の「Gyazo アクセストークン」(Gyazo API のアクセストークン)を入力する。この端末の localStorage にだけ保存。
+
 ## imgur へのアップロード
 
 拡大表示の下部(メモ欄から離した位置)にある「imgur にアップロード」で、表示中の画像を imgur に匿名アップロードし、`i.imgur.com` の URL をクリップボードにコピーする(gif 可、mp4 は非対応、gif 以外は 20MB まで)。
