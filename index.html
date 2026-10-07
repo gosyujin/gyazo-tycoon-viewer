@@ -471,6 +471,15 @@ function showSize(it,tok){
   el.className=big?'big':'';el.textContent=fmtSize(n)+(big?'(20MB超: imgur に上げられないことがあります)':'');
 }
 let cur=-1,lbTok=0;
+// HEIC は Safari 以外のブラウザでデコードできない: 失敗したら heic2any(遅延読み込み)で JPEG に変換する
+let heicLib=null;
+async function heicToJpeg(it,url){
+  if(!heicLib)heicLib=new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';s.onload=()=>res(window.heic2any);s.onerror=()=>{heicLib=null;rej(new Error('heic2any load failed'))};document.head.appendChild(s)});
+  const conv=await (await heicLib)({blob:await (await fetch(url)).blob(),toType:'image/jpeg',quality:.9});
+  const nu=URL.createObjectURL(Array.isArray(conv)?conv[0]:conv);
+  if(fullMem.has(it.i)){URL.revokeObjectURL(fullMem.get(it.i));fullMem.set(it.i,nu)}
+  return nu;
+}
 async function openLb(k){
   const it=filtered[k],lb=$('#lb'),tok=++lbTok;
   if(cur!==k)recordVisit(it.i);  // 開いた記録(同じ画像の再表示は数えない。先読みは数えない)
@@ -484,11 +493,14 @@ async function openLb(k){
     +`<pre id="lbn">${esc(noteOf(it))}</pre><div><button id="lbe">${notes[it.i]?'メモを編集(未反映)':'メモを編集'}</button></div>`+`<div id="lbu"></div>`+(it.b?`<pre>${esc(it.b)}</pre>`:'');
   renderImgur(it);
   try{
-    const url=await getFull(it);
+    let url=await getFull(it);
     showSize(it,tok);
     // 先にデコードを済ませてから差し替える(読み込み中はサムネイルのまま)
-    const im=new Image();im.src=url;
-    await im.decode();
+    let im=new Image();im.src=url;
+    try{await im.decode()}catch(e){
+      if(!/^hei[cf]$/i.test(it.e||''))throw e;
+      url=await heicToJpeg(it,url);im=new Image();im.src=url;await im.decode();
+    }
     if(lb.classList.contains('on')&&tok===lbTok){const t=$('#lbm img');if(t)t.src=url;$('#lbm').className=''
       // 前後の画像を先読み(スワイプで即表示)
       for(const n of [k+1,k-1])if(filtered[n])getFull(filtered[n]).catch(()=>{})}
