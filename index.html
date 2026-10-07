@@ -16,6 +16,7 @@ input,button{background:#555c69;color:var(--fg);border:1px solid var(--line);bor
 input{font-size:16px}  /* 16px未満だとiOSがフォーカス時にズームする */
 button{cursor:pointer}
 #q{flex:1 1 0;min-width:60px;width:0}
+#kind{flex:none;width:64px;padding:6px 4px;text-overflow:ellipsis}
 #sort{flex:none;width:104px;padding:6px 4px;text-overflow:ellipsis}  /* ヘッダーを1行に収める */
 #statbar{position:fixed;right:8px;bottom:calc(6px + env(safe-area-inset-bottom));z-index:4;max-width:calc(100vw - 16px);padding:2px 8px;background:var(--panel);border:1px solid var(--line);border-radius:4px;color:var(--dim);font-size:11px;line-height:1.5;text-align:right;pointer-events:none;opacity:.95}  /* Scrapbox の「N pages」のような画面下のステータス */
 #statbar:empty{display:none}
@@ -89,6 +90,7 @@ button{cursor:pointer}
 <div id="app" hidden>
   <header>
     <input id="q" type="search" placeholder="検索">
+    <select id="kind" title="絞り込み"><option value="all">全て</option><option value="gif">Gifのみ</option></select>
     <select id="sort" title="並び順"><option value="new">新しい順</option><option value="old">古い順</option><option value="visited">最近開いた順</option><option value="viewed">閲覧数順</option></select>
     <button id="pf" title="Wi-Fi のときにサムネイルと閲覧数上位の画像を端末に先読みする(もう一度押すと中断)">⬇️</button>
     <button id="rand" title="ランダムジャンプ">🔀</button>
@@ -341,6 +343,7 @@ const hay=it=>(it._h??=[it.s,it.ti,it.g,it.b,noteOf(it),it.u,it.t].filter(Boolea
 function applyFilter(){
   const terms=$('#q').value.toLowerCase().split(/\s+/).filter(Boolean);
   filtered=terms.length?items.filter(it=>terms.every(t=>hay(it).includes(t))):items;
+  if($('#kind').value==='gif')filtered=filtered.filter(it=>(it.e||'').toLowerCase()==='gif');
   const sort=$('#sort').value;
   if(sort==='old')filtered=filtered.slice().reverse();
   else if(sort==='visited'||sort==='viewed'){  // 開いたことのある画像だけが対象
@@ -365,6 +368,8 @@ function more(){
 }
 addEventListener('scroll',()=>{if(shown<filtered.length&&innerHeight+scrollY>document.body.scrollHeight-800)more()});
 $('#sort').value=['new','old','visited','viewed'].includes(LS('gt_sort'))?LS('gt_sort'):'new';
+$('#kind').value=LS('gt_kind')==='gif'?'gif':'all';
+$('#kind').addEventListener('change',()=>{LSset('gt_kind',$('#kind').value);applyFilter()});
 $('#sort').addEventListener('change',()=>{LSset('gt_sort',$('#sort').value);applyFilter()});
 $('#q').addEventListener('input',()=>{clearTimeout($('#q')._t);$('#q')._t=setTimeout(applyFilter,150)});
 
