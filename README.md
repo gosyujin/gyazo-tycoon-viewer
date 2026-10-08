@@ -5,6 +5,8 @@ gyazo-tycoon の外出先用ビューア(静的ページ1枚)。GitHub Pages に
 開くと App key の入力画面が出て、Dropbox で認可(読み取りのみ)した端末だけ画像を表示できる。
 一覧データ(`/index/`)は本体側の `export_static.py` が Dropbox に書く。
 
+## セットアップ
+
 Redirect URI に、公開した Pages の URL(例 `https://<user>.github.io/gyazo-tycoon-viewer/`)を Dropbox App Console で登録すること。
 
 ## 機能(詳細は docs/features.md)
@@ -16,30 +18,3 @@ Redirect URI に、公開した Pages の URL(例 `https://<user>.github.io/gyaz
 ## ドキュメント
 - [docs/features.md](docs/features.md) 機能の詳細 / [docs/technical-notes.md](docs/technical-notes.md) 注意点・制限
 - [CHANGELOG.md](CHANGELOG.md) 変更履歴 / [CLAUDE.md](CLAUDE.md) Claude への指示
-
-
-## Gyazo へのアップロード
-
-拡大表示の「Gyazo にアップロード」で表示中の画像を Gyazo にアップロードし、ボタンの下に URL を表示する(同じ画像は同じ URL になるので通常は 1 件)。⚙ 設定の「Gyazo アクセストークン」(Gyazo API のアクセストークン)を入力する。この端末の localStorage にだけ保存。
-
-## imgur へのアップロード
-
-拡大表示の下部(メモ欄から離した位置)にある「imgur にアップロード」で、表示中の画像を imgur に匿名アップロードし、`i.imgur.com` の URL をクリップボードにコピーする(gif 可、mp4 は非対応、gif 以外は 20MB まで)。
-
-- 初回は ⚙ 設定の「imgur Client-ID」に、https://api.imgur.com/oauth2/addclient で登録した Anonymous 用アプリの Client-ID を入力する(この端末の localStorage にだけ保存。リポジトリには含まれない)。
-- 応答の deletehash は画像ごとに localStorage に残り、拡大表示の「imgur から削除」で消せる。匿名アップロードは imgur 側に管理画面がないので、この端末以外からは消せない。
-- 同じ画像を再度アップロードしても重複チェックはしない。
-
-## 暗号化した画像(🔒)
-
-Dropbox の `/index/crypto.json` があるとヘッダに 🔒 が出る。パスフレーズを入れると `/index/protected.bin`(暗号化した一覧)と `/protected/` の画像を `crypto.js`(WebCrypto: PBKDF2-SHA256 → AES-256-GCM)で復号し、通常の一覧に混ぜて検索・表示する。導出した鍵は取り出し不可の CryptoKey として端末の IndexedDB に保存(次回から入力不要)。🔓 でロック。復号した画像・サムネイルはキャッシュに保存せずメモリのみ。暗号化した画像は imgur アップロード不可。形式は gyazo-tycoon の `seal.py` を参照。
-
-## 端末キャッシュと先読み(⬇️)
-
-- サムネイル・原寸・動くサムネイルは端末の Cache Storage に残る。量は ⚙ の「保持する上限(MB。既定 3000)」で管理し、超えたら原寸→古い順に捨てる(サイズの控えは IndexedDB `gt_cache`)。
-- ヘッダの ⬇️(🔀 の左)を **Wi-Fi のときに手で押す**と先読みする(iOS Safari は接続種別を取れず、バックグラウンド実行もできないので、画面を開いたままにする)。もう一度押すと中断。進捗は画面右下のステータスに出る。
-  1. サムネイルを新しい順に(上限の4割まで)
-  2. 閲覧数の多い順に原寸(Mac が書く `/index/hot.json` + この端末の閲覧履歴)。上限に達したら止まる
-- 暗号化した画像(🔒)と mp4 は先読みしない。429(レート制限)は待って取り直す。
-- iOS はタブのままだと7日触らないとサイトデータを消すことがある。ホーム画面に追加して使うと残りやすい。
-- 件数(「N枚」)は画面右下のステータスバーに表示する。

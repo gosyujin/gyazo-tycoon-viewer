@@ -37,3 +37,4 @@
 - 2026-10-05 `7050fe3` Changed: Animated thumbnails for gifs
 - 2026-10-05 `8fdd552` Changed: Mobile fixes: no zoom, swipe nav, tap-outside close, taller info panel
 - 2026-10-05 `7bc7ee3` Changed: Initial commit.
+- 2026-10-08 `74326f2` Changed: CLAUDE.md・docs/ を新設し、README を入口に絞った(元の記述は docs/ に残してあり確認済み)
