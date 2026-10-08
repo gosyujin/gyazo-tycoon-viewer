@@ -1,0 +1,39 @@
+# CHANGELOG
+
+1エントリ1〜3行。形式: `日付 コミットhash 種別: 内容`(バージョン番号は未採用。コミットhashを版の代わりにする)。経緯がある変更は docs/decisions/ にリンクする。
+
+- 2026-10-07 `79cad6f` Added: ソート順の左に種類フィルタ(全て / Gifのみ)を追加
+- 2026-10-07 `1e5938a` Fixed: viewer: 設定の「ゴミも表示する」チェックボックスのずれを直す
+- 2026-10-07 `39eab25` Changed: PC の grid を gyazo-tycoon に合わせ、Gyazo へのアップロードを追加する
+- 2026-10-07 `7403460` Changed: メモ編集中に Esc を押すと保存して編集を抜ける
+- 2026-10-07 `639612d` Added: HEICが表示できないブラウザ向けに、拡大表示でheic2anyでJPEGへ変換する
+- 2026-10-07 `70cd33d` Changed: PC幅(900px以上)では拡大表示の説明欄 #lbi を画面下ではなく右に出す
+- 2026-10-07 `cbfbf03` Added: 設定に「ゴミも表示する」を追加(既定は非表示)
+- 2026-10-07 `dfcd29c` Changed: ⬇️ 先読み(サムネイル+閲覧数上位の原寸)、キャッシュを容量上限(MB)管理に、ステータスバー、設定画面の整理
+- 2026-10-06 `c0017f4` Added: 並び順が「最近開いた順/閲覧数順」のとき、開いた画像だけの表示だと分かるようにする
+- 2026-10-06 `011431a` Changed: パスフレーズを NFC に正規化して導出(端末間で同じ鍵になるように)
+- 2026-10-06 `5d1966c` Changed: 暗号化した画像(🔒): パスフレーズで復号して一覧に混ぜる
+- 2026-10-06 `0d60d56` Fixed: キャッシュ表示の文言を短縮、ヘッダーがスクロールに追従しない問題を修正(body の overflow-x を外す)
+- 2026-10-06 `651723b` Changed: サムネイルと動くサムネイルを端末の Cache Storage に保存、⚙ にローカルキャッシュ表示と削除ボタンを追加
+- 2026-10-06 `257c1df` Changed: imgur のコピー・削除ボタンのラベルを短縮(スマホで折り返さないように)
+- 2026-10-06 `28a234e` Added: 拡大表示に画像サイズ(20MB超は赤字)と imgur URL のコピーボタンを追加
+- 2026-10-06 `88b2b54` Fixed: 起動時に最新ビルドを確認し、古ければ ?v=<sha> で読み直す(iOS ホーム画面アプリのキャッシュ対策)
+- 2026-10-06 `c39c68a` Changed: 拡大表示に imgur 匿名アップロードを追加(URL をクリップボードへコピー、deletehash で削除)
+- 2026-10-06 `fb16ebe` Changed: ヘッダーをスマホ幅(320〜375px)でも1行に収める
+- 2026-10-06 `8eef2db` Added: ヘッダーにランダムジャンプ(🔀)ボタンを追加
+- 2026-10-06 `83064c9` Changed: 設定(歯車)を画面下へスクロールせず中央ポップアップで表示
+- 2026-10-06 `16d5e1e` Added: ライトボックスを上下スワイプで閉じられるようにする
+- 2026-10-06 `1637fa5` Added: メモの編集・書き出しを追加し、歯車アイコンをヘッダー右端へ移動
+- 2026-10-06 `8c360d7` Changed: Move export / revoke into a gear panel in the footer
+- 2026-10-06 `ec85e46` Changed: Replace Dropbox write with a manual visit-history export button (read-only scope again)
+- 2026-10-05 `0562973` Changed: Send per-device view counters to Dropbox for the Mac to import
+- 2026-10-05 `f8f4c31` Changed: Add last visited / most viewed sort (device-local visit stats)
+- 2026-10-05 `3490d26` Changed: Cache full-size images (memory + Cache Storage), prefetch neighbors
+- 2026-10-05 `17a2efb` Changed: Lightbox: spinner + blurred, unsaveable thumbnail while full image loads
+- 2026-10-05 `7b3fc2d` Changed: Fix tap-outside-to-close after full-size img layout change
+- 2026-10-05 `1ac5548` Changed: Show build number in footer (stamped by GitHub Actions deploy)
+- 2026-10-05 `1bb5a2d` Changed: Lightbox: avoid size jump when swapping thumbnail for full image
+- 2026-10-05 `ccef811` Changed: OCR area 25vh
+- 2026-10-05 `7050fe3` Changed: Animated thumbnails for gifs
+- 2026-10-05 `8fdd552` Changed: Mobile fixes: no zoom, swipe nav, tap-outside close, taller info panel
+- 2026-10-05 `7bc7ee3` Changed: Initial commit.

@@ -7,6 +7,17 @@ gyazo-tycoon の外出先用ビューア(静的ページ1枚)。GitHub Pages に
 
 Redirect URI に、公開した Pages の URL(例 `https://<user>.github.io/gyazo-tycoon-viewer/`)を Dropbox App Console で登録すること。
 
+## 機能(詳細は docs/features.md)
+- Gyazo へのアップロード
+- imgur への匿名アップロード
+- 暗号化した画像(🔒)の復号・検索・表示
+- 端末キャッシュと先読み(⬇️)
+
+## ドキュメント
+- [docs/features.md](docs/features.md) 機能の詳細 / [docs/technical-notes.md](docs/technical-notes.md) 注意点・制限
+- [CHANGELOG.md](CHANGELOG.md) 変更履歴 / [CLAUDE.md](CLAUDE.md) Claude への指示
+
+
 ## Gyazo へのアップロード
 
 拡大表示の「Gyazo にアップロード」で表示中の画像を Gyazo にアップロードし、ボタンの下に URL を表示する(同じ画像は同じ URL になるので通常は 1 件)。⚙ 設定の「Gyazo アクセストークン」(Gyazo API のアクセストークン)を入力する。この端末の localStorage にだけ保存。
