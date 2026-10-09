@@ -47,6 +47,8 @@ button{cursor:pointer}
 #lbi{height:25vh;overflow:auto;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--panel);font-size:12px}
 #lbi a{color:var(--accent);word-break:break-all}
 #lbi pre{white-space:pre-wrap;word-break:break-all;color:var(--dim);margin:6px 0 0}
+#lbt{display:block;width:100%;box-sizing:border-box;height:84px;min-height:48px;resize:vertical;margin-top:8px;background:#555c69;color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:5px 8px;font:inherit;font-size:16px}  /* 16px未満だとiOSがフォーカス時にズームする */
+#lbnm{margin-top:6px;color:var(--dim);font-size:11px}
 @media (min-width:900px){  /* PC: グリッドは gyazo-tycoon の一覧と同じ寸法 */
 #grid{padding:12px 16px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
 }
@@ -665,6 +667,7 @@ async function heicToJpeg(it,url){
   return nu;
 }
 async function openLb(k){
+  saveNote();  // 開いたままのメモ(blur が来る前に差し替わる場合)を先に保存
   const it=filtered[k],lb=$('#lb'),tok=++lbTok;
   if(cur!==k)recordVisit(it.i);  // 開いた記録(同じ画像の再表示は数えない。先読みは数えない)
   cur=k;
@@ -674,7 +677,8 @@ async function openLb(k){
   $('#lbm').innerHTML='<img alt="" src="'+(hit||thumbCache.get(it.i)||'')+'">';
   const meta=[it.t,it.s,it.ti&&esc(it.ti),it.g&&esc(it.g)].filter(Boolean).join(' / ');
   $('#lbi').innerHTML=`<div>${meta} <span id="lbsz"></span></div>`+(it.u?`<div><a href="${esc(it.u)}" target="_blank" rel="noopener">${esc(it.u)}</a></div>`:'')
-    +`<pre id="lbn">${esc(noteOf(it))}</pre><div><button id="lbe">${notes[it.i]?'メモを編集(未反映)':'メモを編集'}</button></div>`+`<div id="lbu"></div>`+(it.b?`<pre>${esc(it.b)}</pre>`:'');
+    +`<div id="lbnm"></div><textarea id="lbt" placeholder="メモ(検索で引っ掛けるワードを書く)"></textarea>`+`<div id="lbu"></div>`+(it.b?`<pre>${esc(it.b)}</pre>`:'');
+  const ta=$('#lbt');ta.value=noteOf(it);ta._it=it;noteDirty=false;noteMsg(it);
   renderImgur(it);
   try{
     let url=await getFull(it);
@@ -695,25 +699,27 @@ $('#lbi').addEventListener('click',e=>{
   else if(e.target.id==='lbgz')gyazoClick();
   else if(e.target.classList.contains('lbcp'))copyUrl(e.target);
   else if(e.target.classList.contains('lbdel'))imgurDelete(e.target);
-  else if(e.target.id==='lbe'){
-    const it=filtered[cur];if(!it)return;
-    $('#lbn').outerHTML=`<textarea id="lbt" rows="5" style="width:100%;box-sizing:border-box">${esc(noteOf(it))}</textarea>`;
-    $('#lbe').outerHTML='<button id="lbs">保存</button> <button id="lbc">キャンセル</button>';
-    $('#lbt').focus();
-  }else if(e.target.id==='lbc')openLb(cur);
-  else if(e.target.id==='lbs')commitNote();
 });
-$('#lbi').addEventListener('keydown',e=>{  // メモ編集中の Esc は保存して編集を抜ける(拡大表示は閉じない)
-  if(e.target.id!=='lbt'||e.key!=='Escape'||e.isComposing)return;
-  e.preventDefault();e.stopPropagation();commitNote();
-});
-function commitNote(){
-  const it=filtered[cur];if(!it)return;
-  const b=$('#lbt').value.trim();
+// メモは拡大表示を開いたときから入力できるテキストボックス(gyazo-tycoon と同じ)。入力から抜けたら保存する。
+// PC では Esc でも抜けられる(拡大表示は閉じない。抜けた次の Esc で閉じる)。⌘/Ctrl+Enter でも保存する
+let noteDirty=false;
+const noteMsg=(it,t)=>{const m=$('#lbnm');if(m)m.textContent=t||(notes[it.i]?'メモ(この端末で編集済み・Mac へ未反映)':'メモ')};
+function saveNote(){
+  const ta=$('#lbt'),it=ta&&ta._it;
+  if(!ta||!it||!noteDirty)return;
+  noteDirty=false;
+  const b=ta.value.trim();
   if(b===(it.n||''))delete notes[it.i];else notes[it.i]={b,t:Date.now(),o:it.n||''};
   saveNotes();delete it._h;showBuild();
-  openLb(cur);
+  noteMsg(it,'保存しました');setTimeout(()=>{if(ta.isConnected)noteMsg(it)},1500);
 }
+$('#lbi').addEventListener('input',e=>{if(e.target.id==='lbt')noteDirty=true});
+$('#lbi').addEventListener('focusout',e=>{if(e.target.id==='lbt')saveNote()});
+$('#lbi').addEventListener('keydown',e=>{
+  if(e.target.id!=='lbt')return;
+  if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){e.preventDefault();saveNote()}
+  else if(e.key==='Escape'&&!e.isComposing){e.preventDefault();e.stopPropagation();e.target.blur()}  // blur → focusout で保存
+});
 $('#rand').onclick=()=>{  // 現在の絞り込み結果から1枚ランダムに拡大表示(直前と同じ画像は避ける)
   const n=filtered.length;if(!n)return;
   let k=Math.floor(Math.random()*n);
@@ -721,7 +727,7 @@ $('#rand').onclick=()=>{  // 現在の絞り込み結果から1枚ランダム�
   openLb(k);
 };
 $('#grid').addEventListener('click',e=>{const t=e.target.closest('.tile');if(t)openLb(+t.dataset.k)});
-const closeLb=()=>{lbTok++;$('#lbm').className='';cur=-1;$('#lb').classList.remove('on');$('#lbm').innerHTML=''};
+const closeLb=()=>{saveNote();lbTok++;$('#lbm').className='';cur=-1;$('#lb').classList.remove('on');$('#lbm').innerHTML=''};
 $('#lbx').onclick=closeLb;
 function step(d){
   const k=cur+d;if(cur<0||k<0||k>=filtered.length)return;
@@ -745,7 +751,7 @@ $('#lbm').addEventListener('touchend',e=>{
   if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.5){e.preventDefault();step(dx<0?1:-1)}
   else if(Math.abs(dy)>60&&Math.abs(dy)>Math.abs(dx)*1.5){e.preventDefault();closeLb()}  // 上下スワイプで閉じる(#lbi は #lbm の外なので対象外)
 });
-addEventListener('keydown',e=>{if(cur<0)return;if(e.key==='Escape')closeLb();else if(e.key==='ArrowLeft')step(-1);else if(e.key==='ArrowRight')step(1)});
+addEventListener('keydown',e=>{if(cur<0||/^(TEXTAREA|INPUT)$/.test(e.target.tagName))return;if(e.key==='Escape')closeLb();else if(e.key==='ArrowLeft')step(-1);else if(e.key==='ArrowRight')step(1)});
 
 // ---- 更新確認 ----
 // ホーム画面に追加した iOS の Web アプリは HTML を強くキャッシュし、タスクキルでも古いまま残ることがある。
