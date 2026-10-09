@@ -27,6 +27,13 @@ button{cursor:pointer}
 .tile{position:relative;aspect-ratio:1;background:#2f333b;border-radius:6px;overflow:hidden;cursor:pointer}
 .tile img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 .tile .d{position:absolute;bottom:0;left:0;right:0;font-size:10px;background:#000a;padding:0 4px;color:#ddd}
+.mh{grid-column:1/-1;margin:14px 0 2px;padding-bottom:4px;font-size:16px;font-weight:700;border-bottom:1px solid var(--line)}  /* 月の見出し(日付順のときだけ) */
+.mh:first-child{margin-top:0}
+.date-scroll-label{position:fixed;right:0;top:0;height:28px;background:rgba(0,0,0,.8);padding:2px 6px 2px 12px;border-radius:3px;z-index:7;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;opacity:0;pointer-events:none;transition:opacity .2s}  /* スクロール連動の年月ラベル(gyazo-tycoon と同じ) */
+.date-scroll-label.on{opacity:1;pointer-events:auto}
+.date-scroll-label .horiz-line{float:right;width:24px;height:12px;border-bottom:2px solid #396bdd}
+.date-scroll-label .date-label{float:right;margin-right:4px;color:#fff;line-height:24px;white-space:nowrap}
+#lb.on~.date-scroll-label{display:none}
 .msg{padding:40px 16px;text-align:center;color:var(--dim);grid-column:1/-1}
 #setup{max-width:480px;margin:40px auto;padding:0 16px;display:flex;flex-direction:column;gap:12px}
 #setup[hidden],#app[hidden]{display:none}
@@ -126,6 +133,7 @@ button{cursor:pointer}
 </div>
 <div id="pw" hidden><form id="pwf"><div>暗号化した画像のパスフレーズ</div><input id="pwi" type="password" autocomplete="off" autocapitalize="off"><div id="pwe"></div><button>開く</button> <button type="button" id="pwc">キャンセル</button></form></div>
 <div id="lb"><button id="lbx">✕</button><div id="lbm"></div><div id="lbi"></div></div>
+<div id="dsl" class="date-scroll-label" title="ドラッグで月単位にスクロール"><div class="horiz-line"></div><div class="date-label" id="dslt"></div></div>
 <script src="build-info.js"></script>
 <script src="crypto.js"></script>
 <script>
@@ -379,6 +387,7 @@ function computeFiltered(){
     filtered=filtered.filter(it=>visits[it.i]);
     filtered.sort(sort==='visited'?(a,b)=>visits[b.i].t-visits[a.i].t:(a,b)=>visits[b.i].n-visits[a.i].n||visits[b.i].t-visits[a.i].t);
   }
+  computeMonths();
 }
 function setStat(){
   const sort=$('#sort').value,only=/^(visited|viewed)$/.test(sort);  // この2つは「この端末で開いた画像だけ」。気づかず件数が少ないと思わないよう表示する
@@ -405,19 +414,97 @@ function onGrow(){
   computeFiltered();setStat();
   if(filtered.length>before)fillAhead();
 }
+// ---- 月見出しとスクロール連動の年月ラベル(gyazo-tycoon の一覧と同じ) ----
+// 日付順(新しい順・古い順)のときだけ。months は filtered を月ごとに分けたもの(start=その月の先頭の filtered 上の位置)
+const dated=()=>['new','old'].includes($('#sort').value);
+const ymOf=it=>((it&&it.t)||'').slice(0,7);
+const ymHead=ym=>ym?`${+ym.slice(0,4)}年${+ym.slice(5,7)}月`:'日付不明';
+const ymLabel=ym=>ym?`${ym.slice(0,4)}年 ${ym.slice(5,7)}月`:'日付不明';
+let months=[],mIdx={};
+function computeMonths(){
+  months=[];mIdx={};
+  if(!dated())return;
+  filtered.forEach((it,k)=>{
+    const ym=ymOf(it);let m=months[months.length-1];
+    if(!m||m.ym!==ym){m={ym,n:0,start:k};mIdx[ym]=months.push(m)-1}
+    m.n++;
+  });
+}
 function more(){
-  const g=$('#grid'),end=Math.min(shown+PAGE,filtered.length);
-  const html=[];
+  const g=$('#grid'),end=Math.min(shown+PAGE,filtered.length),on=dated();
+  const html=[];let prev=shown&&on?ymOf(filtered[shown-1]):undefined;
+  g.style.paddingBottom='';  // 末尾の月を見出しまで上げるための余白(scrollToMonth)は、足したら外す
   for(let k=shown;k<end;k++){const it=filtered[k];
+    if(on){const ym=ymOf(it);if(ym!==prev){html.push(`<h2 class="mh" data-ym="${ym}" data-k="${k}">${ymHead(ym)}</h2>`);prev=ym}}
     html.push(`<div class="tile" data-k="${k}"><img data-id="${it.i}"${it.a?' data-a="1"':''}${it.x?' data-x="1"':''} data-path="${esc(imgPath(it))}" alt=""><div class="d${it.x?' x':''}">${it.x?'🔒 ':''}${esc(it.t.slice(0,16))}</div></div>`)}
   g.insertAdjacentHTML('beforeend',html.join(''));
   g.querySelectorAll('img:not([data-o])').forEach(i=>{i.dataset.o=1;io.observe(i)});
   shown=end;
 }
+const dsl=$('#dsl');let dsDrag=false,dsHide=0,dsTarget=null,dsOff=0,dsRaf=0;
+const hdrH=()=>document.querySelector('header').offsetHeight;
+const track=()=>[hdrH()+4,innerHeight-28-36];  // 下は画面右下のステータスバーを避ける
+// ヘッダーの直下に最初に見える見出し/タイル
+function firstVisible(){
+  const top=hdrH()+8,ch=$('#grid').children;
+  let lo=0,hi=ch.length-1,ans=-1;
+  while(lo<=hi){const m=(lo+hi)>>1;if(ch[m].getBoundingClientRect().bottom>top){ans=m;hi=m-1}else lo=m+1}
+  const e=ans<0?null:ch[ans];
+  return e&&e.dataset.k!=null?e:null;
+}
+function updLabel(){
+  if(dsDrag||!dated()||!months.length)return;
+  const a=firstVisible(),k=a?+a.dataset.k:-1,it=filtered[k];
+  if(!it)return;
+  const ym=ymOf(it),i=mIdx[ym];if(i==null)return;
+  const m=months[i],f=(i+Math.min(Math.max((k-m.start)/m.n,0),1))/months.length,[t0,t1]=track();
+  dsl.style.top=(t0+f*(t1-t0))+'px';$('#dslt').textContent=ymLabel(ym);
+}
+function showLabel(){
+  if(!dated()||!months.length)return;
+  dsl.classList.add('on');clearTimeout(dsHide);
+  dsHide=setTimeout(()=>{if(!dsDrag&&!dsl.matches(':hover'))dsl.classList.remove('on')},1500);
+}
+// 月の見出しが描画済みならそこへスクロールして true。未描画なら見出しまで描画してから(一覧はすべて手元にあるので、足すだけでよい)
+function scrollToMonth(ym,render){
+  const m=months[mIdx[ym]];if(!m)return false;
+  if(render){while(shown<=m.start&&shown<filtered.length)more();if(shown<filtered.length)more()}  // 見出しの先も1ページ描画する(足りないと見出しまで上げられない)
+  const g=$('#grid'),h=g.querySelector(`.mh[data-ym="${ym}"]`);
+  if(!h)return false;
+  const y=h.getBoundingClientRect().top+scrollY-hdrH()-4;
+  // 最後まで描画済みで末尾の月が短いと見出しを先頭まで上げられない(ラベルが別の月を指す)ので、足りない分だけ下に余白を足す
+  const lack=y-(document.documentElement.scrollHeight-innerHeight);
+  if(shown>=filtered.length&&!indexLoading&&lack>0)g.style.paddingBottom=(parseFloat(getComputedStyle(g).paddingBottom)+lack)+'px';
+  scrollTo(0,y);
+  return true;
+}
+const monthAtY=y=>{const [t0,t1]=track(),n=months.length;return months[Math.min(n-1,Math.max(0,Math.floor((y-t0)/(t1-t0)*n)))]};
+dsl.addEventListener('pointerdown',e=>{
+  if(!months.length)return;
+  e.preventDefault();dsDrag=true;dsTarget=null;dsOff=e.clientY-dsl.getBoundingClientRect().top;
+  dsl.setPointerCapture(e.pointerId);
+});
+dsl.addEventListener('pointermove',e=>{
+  if(!dsDrag)return;
+  const [t0,t1]=track(),y=Math.min(Math.max(e.clientY-dsOff,t0),t1);
+  dsl.style.top=y+'px';
+  const m=monthAtY(y);$('#dslt').textContent=ymLabel(m.ym);
+  if(m.ym!==dsTarget){dsTarget=m.ym;scrollToMonth(m.ym,false)}  // 描画済みならその場で。未描画は離したときに飛ぶ
+});
+function dragEnd(){
+  if(!dsDrag)return;
+  dsDrag=false;showLabel();
+  if(dsTarget!=null)scrollToMonth(dsTarget,true);
+  updLabel();
+}
+dsl.addEventListener('pointerup',dragEnd);dsl.addEventListener('pointercancel',dragEnd);
+dsl.addEventListener('pointerleave',()=>{if(!dsDrag)showLabel()});
+addEventListener('mousemove',e=>{if(e.clientX>innerWidth-48)showLabel()});  // 右端(スクロールバー付近)に寄せたら出す
+addEventListener('resize',updLabel);
 // 継ぎ足しは画面3つ分先まで(画像の読み込みを待たない。タイルは先に並び、画像は近づいたものから読む)
 const nearBottom=()=>shown<filtered.length&&innerHeight+scrollY>document.body.scrollHeight-Math.max(800,innerHeight*3);
 function fillAhead(){for(let g=0;g<50&&nearBottom();g++)more()}
-addEventListener('scroll',fillAhead);
+addEventListener('scroll',()=>{fillAhead();if(!dsRaf)dsRaf=requestAnimationFrame(()=>{dsRaf=0;updLabel();showLabel()})});
 $('#sort').value=['new','old','visited','viewed'].includes(LS('gt_sort'))?LS('gt_sort'):'new';
 $('#kind').value=LS('gt_kind')==='gif'?'gif':'all';
 $('#kind').addEventListener('change',()=>{LSset('gt_kind',$('#kind').value);applyFilter()});
