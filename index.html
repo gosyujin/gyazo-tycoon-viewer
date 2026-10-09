@@ -253,13 +253,33 @@ async function animate(img){
 }
 const imgPath=it=>`/public/${it.i.slice(0,2)}/${it.i}.${it.e}`;
 
-// ---- サムネイル: 25枚ずつ get_thumbnail_batch ----
-const thumbQ=[],thumbBusy={v:false},thumbCache=new Map();
+// ---- サムネイル: 25枚ずつ get_thumbnail_batch(THUMB_PAR 本まで並列。画面に近い順) ----
+// 画像の読み込みは遅くてよいが一覧の継ぎ足し(more)は待たせない。ここは一覧の描画とは独立に非同期で進める
+const thumbQ=[],thumbBusy={n:0},thumbCache=new Map(),THUMB_PAR=3;
 function wantThumb(img){thumbQ.push(img);pump()}
-async function pump(){
-  if(thumbBusy.v)return;thumbBusy.v=true;
-  try{while(thumbQ.length){
-    const batch0=thumbQ.splice(0,25).filter(i=>i.isConnected);
+function pump(){
+  while(thumbBusy.n<THUMB_PAR&&thumbQ.length){
+    thumbBusy.n++;
+    thumbWorker().catch(e=>console.warn(e)).finally(()=>{thumbBusy.n--;if(thumbQ.length)pump()});
+  }
+}
+// 待ち行列から画面に近い順に25枚取る。画面から遠く外れたもの(速いスクロールで通り過ぎた分)は取らずに観察へ戻す
+function takeBatch(){
+  const vh=innerHeight,mid=vh/2,near=[];
+  for(const i of thumbQ.splice(0)){
+    if(!i.isConnected)continue;
+    const r=i.getBoundingClientRect();
+    if(r.bottom<-vh||r.top>vh*2){io.observe(i);continue}
+    near.push([Math.abs((r.top+r.bottom)/2-mid),i]);
+  }
+  near.sort((a,b)=>a[0]-b[0]);
+  const all=near.map(x=>x[1]);
+  thumbQ.push(...all.slice(25));
+  return all.slice(0,25);
+}
+async function thumbWorker(){
+  while(thumbQ.length){
+    const batch0=takeBatch();if(!batch0.length)break;
     await Promise.all(batch0.filter(i=>i.dataset.x).map(protThumb));
     const batch=batch0.filter(i=>!i.dataset.x);
     const todo=batch.filter(i=>{const c=thumbCache.get(i.dataset.id);if(c){i.src=c;if(i.dataset.a)animate(i);return false}return true});
@@ -286,8 +306,14 @@ async function pump(){
         puts.push(cachePut('/__thumb/'+rest[k].dataset.id,blob));
       }});
       await Promise.all(puts);if(puts.length)await enforce();
-    }catch(e){console.warn(e)}
-  }}finally{thumbBusy.v=false}
+    }catch(e){
+      console.warn(e);
+      if(e.status===429){  // 並列にしたぶんレート制限に当たりやすい。待って取り直す(3回まで)
+        const again=rest.filter(i=>!i.src&&i.isConnected&&(i.dataset.r=(+i.dataset.r||0)+1)<=3);
+        thumbQ.push(...again);await sleep(4000);
+      }
+    }
+  }
 }
 async function protThumb(img){
   const id=img.dataset.id;
@@ -342,7 +368,8 @@ function pruneNotes(){  // 配信データに反映済みのものを捨てる
 let items=[],shown=0,filtered=[];
 const PAGE=120;
 const hay=it=>(it._h??=[it.s,it.ti,it.g,it.b,noteOf(it),it.u,it.t].filter(Boolean).join(' ').toLowerCase());
-function applyFilter(){
+let indexLoading=false;  // 月別の一覧を読み込み中(loadIndex)
+function computeFiltered(){
   const terms=$('#q').value.toLowerCase().split(/\s+/).filter(Boolean);
   filtered=terms.length?items.filter(it=>terms.every(t=>hay(it).includes(t))):items;
   if($('#kind').value==='gif')filtered=filtered.filter(it=>(it.e||'').toLowerCase()==='gif');
@@ -352,12 +379,31 @@ function applyFilter(){
     filtered=filtered.filter(it=>visits[it.i]);
     filtered.sort(sort==='visited'?(a,b)=>visits[b.i].t-visits[a.i].t:(a,b)=>visits[b.i].n-visits[a.i].n||visits[b.i].t-visits[a.i].t);
   }
-  window.scrollTo(0,0);
-  $('#grid').innerHTML='';shown=0;more();
-  const only=/^(visited|viewed)$/.test(sort);  // この2つは「この端末で開いたことのある画像だけ」。気づかず件数が少ないと思わないよう表示する
-  $('#stat').textContent=filtered.length.toLocaleString()+'枚'+(only?'(開いた分のみ)':'');
+}
+function setStat(){
+  const sort=$('#sort').value,only=/^(visited|viewed)$/.test(sort);  // この2つは「この端末で開いた画像だけ」。気づかず件数が少ないと思わないよう表示する
+  $('#stat').textContent=filtered.length.toLocaleString()+'枚'+(only?'(開いた分のみ)':'')+(indexLoading?'…':'');
   $('#sort').style.borderColor=only?'var(--accent)':'';
-  if(!filtered.length)$('#grid').innerHTML='<div class="msg">'+(/^(visited|viewed)$/.test(sort)?'まだ開いた画像がありません':'該当なし')+'</div>';
+}
+function applyFilter(){
+  const sort=$('#sort').value;
+  // 新しい順以外は、まだ読んでいない古い月が並びの途中に入るため、読み込みが終わるまで出さない
+  if(indexLoading&&sort!=='new'){
+    window.scrollTo(0,0);$('#grid').innerHTML='<div class="msg">読み込み中…</div>';shown=0;filtered=[];
+    $('#stat').textContent=items.length.toLocaleString()+'枚…';return;
+  }
+  computeFiltered();
+  window.scrollTo(0,0);
+  $('#grid').innerHTML='';shown=0;more();fillAhead();
+  setStat();
+  if(!filtered.length)$('#grid').innerHTML='<div class="msg">'+(indexLoading?'読み込み中…':/^(visited|viewed)$/.test(sort)?'まだ開いた画像がありません':'該当なし')+'</div>';
+}
+// 読み込み中に月が増えたとき。新しい順なら増えるのは末尾だけなので、見ている位置や描画済みのタイルには触らず、必要なら続きを足す
+function onGrow(){
+  if($('#sort').value!=='new'||!shown){applyFilter();return}
+  const before=filtered.length;
+  computeFiltered();setStat();
+  if(filtered.length>before)fillAhead();
 }
 function more(){
   const g=$('#grid'),end=Math.min(shown+PAGE,filtered.length);
@@ -368,7 +414,10 @@ function more(){
   g.querySelectorAll('img:not([data-o])').forEach(i=>{i.dataset.o=1;io.observe(i)});
   shown=end;
 }
-addEventListener('scroll',()=>{if(shown<filtered.length&&innerHeight+scrollY>document.body.scrollHeight-800)more()});
+// 継ぎ足しは画面3つ分先まで(画像の読み込みを待たない。タイルは先に並び、画像は近づいたものから読む)
+const nearBottom=()=>shown<filtered.length&&innerHeight+scrollY>document.body.scrollHeight-Math.max(800,innerHeight*3);
+function fillAhead(){for(let g=0;g<50&&nearBottom();g++)more()}
+addEventListener('scroll',fillAhead);
 $('#sort').value=['new','old','visited','viewed'].includes(LS('gt_sort'))?LS('gt_sort'):'new';
 $('#kind').value=LS('gt_kind')==='gif'?'gif':'all';
 $('#kind').addEventListener('change',()=>{LSset('gt_kind',$('#kind').value);applyFilter()});
@@ -618,18 +667,43 @@ async function checkUpdate(){
 checkUpdate();
 
 // ---- 起動 ----
+// 月別の一覧は端末の Cache Storage に残し、manifest の hash が同じ月は取りに行かない
+const IDX_CACHE='gt-index-v1',IDX_PAR=6;
+async function loadShard(m){
+  const key='/__idx/'+m.m+'.'+m.hash;let c=null;
+  try{c=await caches.open(IDX_CACHE);const h=m.hash&&await c.match(key);if(h)return await h.json()}catch(e){c=null}
+  let arr,err;
+  for(let n=0;n<3;n++){  // 並列で取るので 429・通信エラーは待って取り直す
+    try{arr=await download(`/index/${m.m}.json`);break}catch(e){err=e;await sleep(1000*(n+1))}
+  }
+  if(!arr)throw err;
+  if(c&&m.hash)try{
+    for(const r of await c.keys())if(r.url.includes('/__idx/'+m.m+'.'))await c.delete(r);  // 古い版を捨てる
+    await c.put(key,new Response(JSON.stringify(arr),{headers:{'Content-Type':'application/json'}}));
+  }catch(e){}
+  return arr;
+}
 async function loadIndex(){
   $('#grid').innerHTML='<div class="msg">読み込み中…</div>';
   const man=await download('/index/manifest.json');
-  const all=[];
-  // 新しい月から順に読み、1か月ごとに表示を更新
-  for(const m of man.months){
-    const arr=await download(`/index/${m.m}.json`);
-    all.push(...arr);pubItems=all.slice();mergeItems();
-    if(all.length===arr.length||all.length<=PAGE*2)applyFilter();
-    else $('#stat').textContent=items.length.toLocaleString()+'枚…';
-  }
-  applyFilter();pruneNotes();
+  const ms=man.months,res=new Array(ms.length),all=[];
+  let next=0,ready=0,failed=0;
+  indexLoading=true;pubItems=all;
+  // 新しい月から IDX_PAR 本ずつ並列で取り、先頭から途切れず読めた分だけ一覧に足す(新しい順を崩さない)
+  const worker=async()=>{
+    while(next<ms.length){
+      const k=next++;
+      try{res[k]=await loadShard(ms[k])}catch(e){failed++;console.warn(ms[k].m,e);res[k]=[]}
+      let n=0;
+      while(ready<ms.length&&res[ready]){all.push(...res[ready]);res[ready]=null;ready++;n++}
+      if(n){mergeItems();if(ready<ms.length)onGrow()}
+    }
+  };
+  await Promise.all(Array.from({length:IDX_PAR},worker));
+  indexLoading=false;mergeItems();
+  if($('#sort').value==='new'&&shown){computeFiltered();setStat();fillAhead()}else applyFilter();
+  if(failed)$('#stat').textContent+=`(${failed}か月分が読めませんでした)`;
+  pruneNotes();
   initProtected();
 }
 
