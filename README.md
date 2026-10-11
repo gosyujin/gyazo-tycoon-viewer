@@ -14,6 +14,7 @@ Redirect URI に、公開した Pages の URL(例 `https://<user>.github.io/gyaz
 - imgur への匿名アップロード
 - 暗号化した画像(🔒)の復号・検索・表示
 - 端末キャッシュと先読み(⬇️)
+- オフライン(機内モード・圏外)でも開いて、端末に残した一覧とキャッシュ済みの画像を表示・検索
 
 ## ドキュメント
 - [docs/features.md](docs/features.md) 機能の詳細 / [docs/technical-notes.md](docs/technical-notes.md) 注意点・制限

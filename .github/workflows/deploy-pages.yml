@@ -30,6 +30,7 @@ jobs:
           window.BUILD_INFO = { sha: '${SHA}', time: '${TIME}' };
           EOF
           sed -i "s/build-info\.js\"><\/script>/build-info.js?v=${SHA}\"><\/script>/" index.html
+          sed -i "s/__BUILD_SHA__/${SHA}/" sw.js
       - uses: actions/configure-pages@v5
         with:
           enablement: true

@@ -381,6 +381,7 @@ let items=[],shown=0,filtered=[];
 const PAGE=120;
 const hay=it=>(it._h??=[it.s,it.ti,it.g,it.b,noteOf(it),it.u,it.t].filter(Boolean).join(' ').toLowerCase());
 let indexLoading=false;  // 月別の一覧を読み込み中(loadIndex)
+let offline=false;  // 通信できず、端末に控えた一覧(manifest・月別・暗号化の一覧)で表示している
 function computeFiltered(){
   const terms=$('#q').value.toLowerCase().split(/\s+/).filter(Boolean);
   filtered=terms.length?items.filter(it=>terms.every(t=>hay(it).includes(t))):items;
@@ -395,7 +396,7 @@ function computeFiltered(){
 }
 function setStat(){
   const sort=$('#sort').value,only=/^(visited|viewed)$/.test(sort);  // この2つは「この端末で開いた画像だけ」。気づかず件数が少ないと思わないよう表示する
-  $('#stat').textContent=filtered.length.toLocaleString()+'枚'+(only?'(開いた分のみ)':'')+(indexLoading?'…':'');
+  $('#stat').textContent=filtered.length.toLocaleString()+'枚'+(only?'(開いた分のみ)':'')+(indexLoading?'…':'')+(offline?' · オフライン':'');
   $('#sort').style.borderColor=only?'var(--accent)':'';
 }
 function applyFilter(){
@@ -770,15 +771,38 @@ checkUpdate();
 
 // ---- 起動 ----
 // 月別の一覧は端末の Cache Storage に残し、manifest の hash が同じ月は取りに行かない
-const IDX_CACHE='gt-index-v1',IDX_PAR=6;
+const IDX_CACHE='gt-index-v1',IDX_PAR=6,NET_MS=8000;
+// 通信できない・遅い・Dropbox 側の不調(429・5xx)のとき。認可切れ(400/401)や not_found(409)は控えに逃げずそのまま失敗にする
+const netErr=e=>e instanceof TypeError||e.message==='timeout'||/\s(429|5\d\d)$/.test(e.message||'');
+// manifest.json / crypto.json / protected.bin(暗号文)は取れたら IDX_CACHE に控え、通信できないときはその控えを使う(オフライン起動)
+// 控えがあるときは NET_MS を過ぎたら待たずに控えを返す(電波が不安定でハングしても開ける)
+async function cachedDl(name,path,bin){
+  const key='/__idx/_'+name;let c=null,old=null;
+  try{c=await caches.open(IDX_CACHE);old=await c.match(key)}catch(e){}
+  const fromOld=()=>{offline=true;return bin?old.arrayBuffer():old.json()};
+  if(old&&navigator.onLine===false)return fromOld();
+  try{
+    const net=bin?downloadBuf(path):download(path);
+    net.catch(()=>{});
+    const v=await (old?Promise.race([net,sleep(NET_MS).then(()=>{throw new Error('timeout')})]):net);
+    if(c)try{await c.put(key,new Response(bin?v:JSON.stringify(v)))}catch(e){}
+    return v;
+  }catch(e){
+    if(old&&netErr(e))return fromOld();
+    throw e;
+  }
+}
 async function loadShard(m){
   const key='/__idx/'+m.m+'.'+m.hash;let c=null;
   try{c=await caches.open(IDX_CACHE);const h=m.hash&&await c.match(key);if(h)return await h.json()}catch(e){c=null}
   let arr,err;
-  for(let n=0;n<3;n++){  // 並列で取るので 429・通信エラーは待って取り直す
+  for(let n=0;n<3&&navigator.onLine!==false;n++){  // 並列で取るので 429・通信エラーは待って取り直す(オフラインなら待たない)
     try{arr=await download(`/index/${m.m}.json`);break}catch(e){err=e;await sleep(1000*(n+1))}
   }
-  if(!arr)throw err;
+  if(!arr&&c)try{  // 取れなければ、控えにある古い版(hash 違い)を使う
+    for(const r of await c.keys())if(r.url.includes('/__idx/'+m.m+'.')){offline=true;return await (await c.match(r)).json()}
+  }catch(e){}
+  if(!arr)throw err||new Error('offline');
   if(c&&m.hash)try{
     for(const r of await c.keys())if(r.url.includes('/__idx/'+m.m+'.'))await c.delete(r);  // 古い版を捨てる
     await c.put(key,new Response(JSON.stringify(arr),{headers:{'Content-Type':'application/json'}}));
@@ -787,7 +811,7 @@ async function loadShard(m){
 }
 async function loadIndex(){
   $('#grid').innerHTML='<div class="msg">読み込み中…</div>';
-  const man=await download('/index/manifest.json');
+  const man=await cachedDl('manifest','/index/manifest.json');
   const ms=man.months,res=new Array(ms.length),all=[];
   let next=0,ready=0,failed=0;
   indexLoading=true;pubItems=all;
@@ -805,6 +829,7 @@ async function loadIndex(){
   indexLoading=false;mergeItems();
   if($('#sort').value==='new'&&shown){computeFiltered();setStat();fillAhead()}else applyFilter();
   if(failed)$('#stat').textContent+=`(${failed}か月分が読めませんでした)`;
+  if(offline&&!items.length)$('#grid').innerHTML='<div class="msg">オフラインです。一度オンラインで開くと、一覧が端末に残ります</div>';
   pruneNotes();
   initProtected();
 }
@@ -886,14 +911,14 @@ const idb=()=>new Promise((ok,ng)=>{const r=indexedDB.open('gt_crypto',1);r.onup
 async function idbGet(k){try{const d=await idb();return await new Promise(ok=>{const r=d.transaction('k').objectStore('k').get(k);r.onsuccess=()=>ok(r.result);r.onerror=()=>ok(null)})}catch(e){return null}}
 async function idbSet(k,v){try{const d=await idb();await new Promise((ok,ng)=>{const t=d.transaction('k','readwrite');v==null?t.objectStore('k').delete(k):t.objectStore('k').put(v,k);t.oncomplete=ok;t.onerror=()=>ng(t.error)})}catch(e){console.warn(e)}}
 async function loadProtected(key){
-  const arr=JSON.parse(new TextDecoder().decode(await GT_CRYPTO.decrypt(key,await downloadBuf('/index/protected.bin'),'index')));
+  const arr=JSON.parse(new TextDecoder().decode(await GT_CRYPTO.decrypt(key,await cachedDl('protected','/index/protected.bin',true),'index')));
   pkey=key;protItems=arr.map(it=>(it.x=1,it));
   mergeItems();applyFilter();setLock(true);
 }
 function setLock(on){$('#lock').textContent=on?'🔓':'🔒';$('#lock').title=on?'暗号化した画像をロック':'暗号化した画像を開く'}
 async function initProtected(){
   try{
-    pparams=await download('/index/crypto.json');
+    pparams=await cachedDl('crypto','/index/crypto.json');
   }catch(e){return}  // 暗号化した画像が無い
   $('#lock').hidden=false;setLock(false);
   const k=await idbGet('key');
@@ -955,6 +980,10 @@ $('#imgurid').oninput=e=>LSset('gt_imgur',e.target.value.trim()||null);
 $('#gyazotk').value=LS('gt_gyazo')||'';
 $('#gyazotk').oninput=e=>LSset('gt_gyazo',e.target.value.trim()||null);
 $('#login').onclick=startLogin;
+// オフライン対応: アプリ本体は Service Worker(sw.js)で、一覧は Cache Storage(gt-index-v1)で残す
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+// 控えの一覧で開いていたら、オンラインに戻ったとき最新を読み直す(拡大表示・検索・設定の途中なら邪魔しない)
+addEventListener('online',()=>{if(offline&&!indexLoading&&!$('#lb').classList.contains('on')&&$('#cfg').hidden&&!$('#q').value)location.reload()});
 $('#out').onclick=()=>{if(confirm('この端末の認可を消しますか?')){['gt_refresh','gt_key'].forEach(k=>LSset(k,null));location.reload()}};
 (async()=>{
   $('#redir').textContent=REDIR;$('#key').value=LS('gt_key')||'';
