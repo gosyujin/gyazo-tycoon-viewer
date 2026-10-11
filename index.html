@@ -11,18 +11,18 @@
 *{box-sizing:border-box}
 html{overflow-x:hidden}
 html,body{max-width:100%}  /* overflow は html だけに付ける(body に付けると body がスクロール容器になり、sticky ヘッダーが追従しない) */
-body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"Hiragino Sans",sans-serif;min-height:100vh;padding-bottom:calc(30px + env(safe-area-inset-bottom) + var(--fh,0px))}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"Hiragino Sans",sans-serif;min-height:100vh;padding-bottom:calc(30px + var(--fh,0px))}
 header{position:sticky;top:0;z-index:5;display:flex;flex-wrap:nowrap;gap:6px;align-items:center;padding:8px 10px;background:var(--panel);border-bottom:1px solid var(--line)}
 select{background:#555c69;color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:6px 8px;font:inherit;font-size:16px}
 input,button{background:#555c69;color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:6px 10px;font:inherit}
 input{font-size:16px}  /* 16px未満だとiOSがフォーカス時にズームする */
 button{cursor:pointer}
 #q{flex:1 1 0;min-width:0;width:0}
-#sbar{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--line)}  /* 検索フォーム。画面下に張り付く */
+#sbar{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;padding:8px 10px;background:var(--panel);border-top:1px solid var(--line)}  /* 検索フォーム。画面下に張り付く。safe-area の余白は足さない(キーボード中も下に空きが出るため。scrapbox-tycoon・hateb-tycoon・gyazo-tycoon と揃える) */
 @media (min-width:900px){#sbar{justify-content:center}#q{max-width:640px}}  /* PC では検索欄を伸ばしすぎない */
 #kind{flex:0 1 64px;min-width:0;padding:6px 4px;text-overflow:ellipsis}  /* 狭い画面では縮めて、🔒 を含めてヘッダーを1行に収める */
 #sort{flex:0 1 104px;min-width:0;padding:6px 4px;text-overflow:ellipsis}
-#statbar{position:fixed;right:8px;bottom:calc(6px + env(safe-area-inset-bottom) + var(--fh,0px));z-index:4;max-width:calc(100vw - 16px);padding:2px 8px;background:var(--panel);border:1px solid var(--line);border-radius:4px;color:var(--dim);font-size:11px;line-height:1.5;text-align:right;pointer-events:none;opacity:.95}  /* Scrapbox の「N pages」のような画面下のステータス */
+#statbar{position:fixed;right:8px;bottom:calc(6px + var(--fh,0px));z-index:4;max-width:calc(100vw - 16px);padding:2px 8px;background:var(--panel);border:1px solid var(--line);border-radius:4px;color:var(--dim);font-size:11px;line-height:1.5;text-align:right;pointer-events:none;opacity:.95}  /* Scrapbox の「N pages」のような画面下のステータス */
 #statbar:empty{display:none}
 #pf.on{background:var(--accent);color:#123}
 #grid{padding:10px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}
