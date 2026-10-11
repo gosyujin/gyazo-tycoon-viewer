@@ -2,7 +2,7 @@
 
 1エントリ1〜3行。形式: `日付 コミットhash 種別: 内容`(バージョン番号は未採用。コミットhashを版の代わりにする)。経緯がある変更は docs/decisions/ にリンクする。
 
-- 2026-10-11 (本コミット) Added: オフライン対応。Service Worker(sw.js)でアプリ本体を残し、manifest・月別の一覧・暗号化の一覧を `gt-index-v1` に控えて、通信できなくてもページが開き、一覧表示・検索ができるようにした(hateb-tycoon / scrapbox-tycoon と同じ方式。未検証: 実機の iOS)
+- 2026-10-11 `b0cac97` Added: オフライン対応。Service Worker(sw.js)でアプリ本体を残し、manifest・月別の一覧・暗号化の一覧を `gt-index-v1` に控えて、通信できなくてもページが開き、一覧表示・検索ができるようにした(hateb-tycoon / scrapbox-tycoon と同じ方式。未検証: 実機の iOS)
 - 2026-10-11 `4e08729` Fixed: 検索フッターの下に safe-area 分の余白が出ていた(キーボード中は入力欄の下が約40px空く)ので外し、scrapbox-tycoon・hateb-tycoon・gyazo-tycoon と揃えた(未検証: 実機の iPhone)
 - 2026-10-09 (本コミット) Changed: 起動が遅い問題を直す。月別の一覧を6本並列で取って端末にキャッシュ(manifest の hash が同じ月は取らない)、読み込み中でも継ぎ足せるようにし、サムネ取得を3本並列・画面に近い順にする(未検証: 実機の iOS Safari での体感)
 - 2026-10-09 `6b7a3c3` Added: ファビコン(favicon.png)を追加
