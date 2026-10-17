@@ -102,7 +102,7 @@ button{cursor:pointer}
 </div>
 <div id="app" hidden>
   <header>
-    <select id="kind" title="絞り込み"><option value="all">全て</option><option value="gif">Gifのみ</option></select>
+    <select id="kind" title="絞り込み"><option value="all">全て</option><option value="gif">Gifのみ</option><option value="anim">Gifアニメのみ</option></select>
     <select id="sort" title="並び順"><option value="new">新しい順</option><option value="old">古い順</option><option value="visited">最近開いた順</option><option value="viewed">閲覧数順</option></select>
     <button id="pf" title="Wi-Fi のときにサムネイルと閲覧数上位の画像を端末に先読みする(もう一度押すと中断)">⬇️</button>
     <button id="rand" title="ランダムジャンプ">🔀</button>
@@ -386,6 +386,7 @@ function computeFiltered(){
   const terms=$('#q').value.toLowerCase().split(/\s+/).filter(Boolean);
   filtered=terms.length?items.filter(it=>terms.every(t=>hay(it).includes(t))):items;
   if($('#kind').value==='gif')filtered=filtered.filter(it=>(it.e||'').toLowerCase()==='gif');
+  else if($('#kind').value==='anim')filtered=filtered.filter(it=>it.am);  // am=動く gif(本体の export_static.py が入れる。未判定は出ない)
   const sort=$('#sort').value;
   if(sort==='old')filtered=filtered.slice().reverse();
   else if(sort==='visited'||sort==='viewed'){  // 開いたことのある画像だけが対象
@@ -518,7 +519,7 @@ const nearBottom=()=>shown<filtered.length&&innerHeight+scrollY>document.body.sc
 function fillAhead(){for(let g=0;g<50&&nearBottom();g++)more()}
 addEventListener('scroll',()=>{fillAhead();if(!dsRaf)dsRaf=requestAnimationFrame(()=>{dsRaf=0;updLabel();showLabel()})});
 $('#sort').value=['new','old','visited','viewed'].includes(LS('gt_sort'))?LS('gt_sort'):'new';
-$('#kind').value=LS('gt_kind')==='gif'?'gif':'all';
+$('#kind').value=['gif','anim'].includes(LS('gt_kind'))?LS('gt_kind'):'all';
 $('#kind').addEventListener('change',()=>{LSset('gt_kind',$('#kind').value);applyFilter()});
 $('#sort').addEventListener('change',()=>{LSset('gt_sort',$('#sort').value);applyFilter()});
 $('#q').addEventListener('input',()=>{clearTimeout($('#q')._t);$('#q')._t=setTimeout(applyFilter,150)});
