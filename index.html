@@ -89,6 +89,9 @@ button{cursor:pointer}
 #pwf{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;width:min(320px,90vw)}
 #pwf input{width:100%;margin:8px 0}#pwe{color:#ff8a8a;min-height:1.5em}
 .tile .d.x{color:var(--accent)}
+.tile.x::after{content:"";position:absolute;inset:0;border:2px solid var(--accent);border-radius:6px;pointer-events:none}  /* 暗号化した画像は枠で一目で分かるようにする */
+.tile .lk{position:absolute;top:4px;left:4px;z-index:1;font-size:13px;line-height:1;padding:3px 4px;border-radius:4px;background:var(--accent);color:#123;pointer-events:none}  /* gyazo-tycoon の 🔒 バッジと同じく画像の左上 */
+#lock.on{background:var(--accent);color:#123;border-color:var(--accent)}  /* 開錠中(🔓)は色でも分かるようにする */
 </style>
 </head>
 <body>
@@ -102,7 +105,7 @@ button{cursor:pointer}
 </div>
 <div id="app" hidden>
   <header>
-    <select id="kind" title="絞り込み"><option value="all">全て</option><option value="anim">Gifアニメのみ</option></select>
+    <select id="kind" title="絞り込み"><option value="all">全て</option><option value="anim">Gifアニメのみ</option><option value="enc" hidden>暗号化のみ</option></select>
     <select id="sort" title="並び順"><option value="new">新しい順</option><option value="old">古い順</option><option value="visited">最近開いた順</option><option value="viewed">閲覧数順</option></select>
     <button id="pf" title="Wi-Fi のときにサムネイルと閲覧数上位の画像を端末に先読みする(もう一度押すと中断)">⬇️</button>
     <button id="rand" title="ランダムジャンプ">🔀</button>
@@ -385,7 +388,9 @@ let offline=false;  // 通信できず、端末に控えた一覧(manifest・月
 function computeFiltered(){
   const terms=$('#q').value.toLowerCase().split(/\s+/).filter(Boolean);
   filtered=terms.length?items.filter(it=>terms.every(t=>hay(it).includes(t))):items;
-  if($('#kind').value==='anim')filtered=filtered.filter(it=>it.am);  // am=動く gif(本体の export_static.py が入れる。未判定は出ない)
+  const kind=$('#kind').value;
+  if(kind==='enc')filtered=filtered.filter(it=>it.x);  // 暗号化した画像(ロック中は一覧に混ざらないので空になる)
+  else if(kind==='anim')filtered=filtered.filter(it=>it.am);  // am=動く gif(本体の export_static.py が入れる。未判定は出ない)
   const sort=$('#sort').value;
   if(sort==='old')filtered=filtered.slice().reverse();
   else if(sort==='visited'||sort==='viewed'){  // 開いたことのある画像だけが対象
@@ -410,7 +415,7 @@ function applyFilter(){
   window.scrollTo(0,0);
   $('#grid').innerHTML='';shown=0;more();fillAhead();
   setStat();
-  if(!filtered.length)$('#grid').innerHTML='<div class="msg">'+(indexLoading?'読み込み中…':/^(visited|viewed)$/.test(sort)?'まだ開いた画像がありません':'該当なし')+'</div>';
+  if(!filtered.length)$('#grid').innerHTML='<div class="msg">'+(indexLoading?'読み込み中…':/^(visited|viewed)$/.test(sort)?'まだ開いた画像がありません':$('#kind').value==='enc'&&!pkey?'🔒 を押して開錠すると、暗号化した画像が出ます':'該当なし')+'</div>';
 }
 // 読み込み中に月が増えたとき。新しい順なら増えるのは末尾だけなので、見ている位置や描画済みのタイルには触らず、必要なら続きを足す
 function onGrow(){
@@ -441,7 +446,7 @@ function more(){
   g.style.paddingBottom='';  // 末尾の月を見出しまで上げるための余白(scrollToMonth)は、足したら外す
   for(let k=shown;k<end;k++){const it=filtered[k];
     if(on){const ym=ymOf(it);if(ym!==prev){html.push(`<h2 class="mh" data-ym="${ym}" data-k="${k}">${ymHead(ym)}</h2>`);prev=ym}}
-    html.push(`<div class="tile" data-k="${k}"><img data-id="${it.i}"${it.a?' data-a="1"':''}${it.x?' data-x="1"':''} data-path="${esc(imgPath(it))}" alt=""><div class="d${it.x?' x':''}">${it.x?'🔒 ':''}${esc(it.t.slice(0,16))}</div></div>`)}
+    html.push(`<div class="tile${it.x?' x':''}" data-k="${k}"><img data-id="${it.i}"${it.a?' data-a="1"':''}${it.x?' data-x="1"':''} data-path="${esc(imgPath(it))}" alt="">${it.x?'<b class="lk" title="暗号化した画像">🔒</b>':''}<div class="d${it.x?' x':''}">${esc(it.t.slice(0,16))}</div></div>`)}
   g.insertAdjacentHTML('beforeend',html.join(''));
   g.querySelectorAll('img:not([data-o])').forEach(i=>{i.dataset.o=1;io.observe(i)});
   shown=end;
@@ -915,12 +920,14 @@ async function loadProtected(key){
   pkey=key;protItems=arr.map(it=>(it.x=1,it));
   mergeItems();applyFilter();setLock(true);
 }
-function setLock(on){$('#lock').textContent=on?'🔓':'🔒';$('#lock').title=on?'暗号化した画像をロック':'暗号化した画像を開く'}
+function setLock(on){$('#lock').textContent=on?'🔓':'🔒';$('#lock').classList.toggle('on',on);$('#lock').title=on?'暗号化した画像をロック':'暗号化した画像を開く'}
 async function initProtected(){
   try{
     pparams=await cachedDl('crypto','/index/crypto.json');
   }catch(e){return}  // 暗号化した画像が無い
   $('#lock').hidden=false;setLock(false);
+  $('#kind option[value=enc]').hidden=false;
+  if(LS('gt_kind')==='enc'){$('#kind').value='enc';applyFilter()}
   const k=await idbGet('key');
   if(k&&await GT_CRYPTO.verify(k,pparams)){try{await loadProtected(k)}catch(e){console.warn(e);setLock(false)}}
 }
