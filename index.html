@@ -382,11 +382,21 @@ function pruneNotes(){  // 配信データに反映済みのものを捨てる
 // ---- 一覧 ----
 let items=[],shown=0,filtered=[];
 const PAGE=120;
-const hay=it=>(it._h??=[it.s,it.ti,it.g,it.b,noteOf(it),it.u,it.t].filter(Boolean).join(' ').toLowerCase());
+// 検索用の正規化。OCR の取りこぼしを吸収する(本文そのものは加工せず、検索のときだけ両側に同じ変換をかける)。
+// ①NFKC(全角半角・互換文字)と小文字化 ②日本語(非ASCII)に隣接する空白・改行を詰める(「クラス メー\nト」→「クラスメート」。英語の語間は残す)
+// ③OCR が取り違えやすい文字を同一視(先頭が代表。長音と各種ダッシュ、カ/力・ロ/口・ニ/二・エ/工・ト/卜・タ/夕・ハ/八、ヘ/へ・ベ/べ・ペ/ぺ、ソ/ン・ツ/シ、小書き仮名と大書き)。
+// ②を先にやるのは、③で長音が ASCII の「-」に寄る前に隣接を判定するため。足す・外すはこの表だけ。
+const FOLD={};
+for(const g of ['-ー−‐‑‒–—―─ｰ','カ力','ロ口','ニ二','エ工ェ','ト卜','タ夕','ハ八','ヘへ','ベべ','ペぺ','ソン','ツシッ','ヤャ','ユュ','ヨョ','アァ','イィ','ウゥ','オォ','つっ','やゃ','ゆゅ','よょ'])
+  for(const c of [...g].slice(1))FOLD[c]=g[0];
+const FOLD_RE=new RegExp('['+Object.keys(FOLD).join('')+']','g');
+const normSearch=s=>s.normalize('NFKC').toLowerCase().replace(/\s*([^\x00-\x7f])\s*/g,'$1').replace(FOLD_RE,c=>FOLD[c]);
+// 項目ごとに正規化してから ' ' でつなぐ(項目をまたいだ偽ヒットを避ける)
+const hay=it=>(it._h??=[it.s,it.ti,it.g,it.b,noteOf(it),it.u,it.t].filter(Boolean).map(normSearch).join(' '));
 let indexLoading=false;  // 月別の一覧を読み込み中(loadIndex)
 let offline=false;  // 通信できず、端末に控えた一覧(manifest・月別・暗号化の一覧)で表示している
 function computeFiltered(){
-  const terms=$('#q').value.toLowerCase().split(/\s+/).filter(Boolean);
+  const terms=$('#q').value.split(/\s+/).filter(Boolean).map(normSearch);
   filtered=terms.length?items.filter(it=>terms.every(t=>hay(it).includes(t))):items;
   const kind=$('#kind').value;
   if(kind==='enc')filtered=filtered.filter(it=>it.x);  // 暗号化した画像(ロック中は一覧に混ざらないので空になる)
