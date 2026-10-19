@@ -46,6 +46,8 @@ button{cursor:pointer}
 #lbm img{width:100%;height:100%;object-fit:contain}  /* サムネイルと原寸で同じ枠・同じ位置にする(差し替え時に大きさが跳ねない) */
 #lbi{height:25vh;overflow:auto;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--panel);font-size:12px}
 #lbi a{color:var(--accent);word-break:break-all}
+.tile.jumped::before{content:"";position:absolute;inset:0;z-index:1;border:3px solid var(--accent);border-radius:6px;pointer-events:none;animation:jumped 2.4s ease-out forwards}  /* 一覧へジャンプした先のタイルを一瞬光らせる */
+@keyframes jumped{0%,60%{opacity:1}100%{opacity:0}}
 #lbi pre{white-space:pre-wrap;word-break:break-all;color:var(--dim);margin:6px 0 0}
 #lbt{display:block;width:100%;box-sizing:border-box;height:84px;min-height:48px;resize:vertical;margin-top:8px;background:#555c69;color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:5px 8px;font:inherit;font-size:16px}  /* 16px未満だとiOSがフォーカス時にズームする */
 #lbnm{margin-top:6px;color:var(--dim);font-size:11px}
@@ -691,7 +693,8 @@ async function openLb(k){
   const hit=fullMem.get(it.i);
   $('#lbm').className=hit?'':'loading';
   $('#lbm').innerHTML='<img alt="" src="'+(hit||thumbCache.get(it.i)||'')+'">';
-  const meta=[it.t,it.s,it.ti&&esc(it.ti),it.g&&esc(it.g)].filter(Boolean).join(' / ');
+  // 日付は一覧へのリンク(絞り込みを外して、この画像の位置へジャンプする。gyazo と同じ)
+  const meta=[it.t&&`<a href="#" class="lbjump" title="絞り込みを外して、一覧のこの画像の位置へ">${esc(it.t)}</a>`,it.s,it.ti&&esc(it.ti),it.g&&esc(it.g)].filter(Boolean).join(' / ');
   $('#lbi').innerHTML=`<div>${meta} <span id="lbsz"></span></div>`+(it.u?`<div><a href="${esc(it.u)}" target="_blank" rel="noopener">${esc(it.u)}</a></div>`:'')
     +`<div id="lbnm"></div><textarea id="lbt" placeholder="メモ(検索で引っ掛けるワードを書く)"></textarea>`+`<div id="lbu"></div>`+(it.b?`<pre>${esc(it.b)}</pre>`:'');
   const ta=$('#lbt');ta.value=noteOf(it);ta._it=it;noteDirty=false;noteMsg(it);
@@ -711,7 +714,8 @@ async function openLb(k){
   }catch(e){console.warn(e);if(tok===lbTok)$('#lbm').className='failed'}
 }
 $('#lbi').addEventListener('click',e=>{
-  if(e.target.id==='lbimg')imgurClick();
+  if(e.target.classList.contains('lbjump')){e.preventDefault();jumpToItem(filtered[cur])}
+  else if(e.target.id==='lbimg')imgurClick();
   else if(e.target.id==='lbgz')gyazoClick();
   else if(e.target.classList.contains('lbcp'))copyUrl(e.target);
   else if(e.target.classList.contains('lbdel'))imgurDelete(e.target);
@@ -744,6 +748,24 @@ $('#rand').onclick=()=>{  // 現在の絞り込み結果から1枚ランダム�
 };
 $('#grid').addEventListener('click',e=>{const t=e.target.closest('.tile');if(t)openLb(+t.dataset.k)});
 const closeLb=()=>{saveNote();lbTok++;$('#lbm').className='';cur=-1;$('#lb').classList.remove('on');$('#lbm').innerHTML=''};
+// 拡大表示の日付から: 検索語・種類フィルタを外し、日付順の一覧でその画像の位置までスクロールする(前後にアップロードした画像を見られる)
+function jumpToItem(it){
+  if(!it)return;
+  closeLb();
+  clearTimeout($('#q')._t);$('#q').value='';
+  $('#kind').value='all';LSset('gt_kind','all');
+  // 日付順でなければ新しい順へ。読み込み中は新しい順しか出せない(applyFilter)ので、古い順も新しい順へ
+  if(!dated()||indexLoading){$('#sort').value='new';LSset('gt_sort','new')}
+  applyFilter();
+  const k=filtered.indexOf(it);if(k<0)return;
+  while(shown<=k)more();
+  const t=$('#grid').querySelector(`.tile[data-k="${k}"]`);if(!t)return;
+  // ヘッダー(固定)と検索フッターを避けた表示領域の真ん中に置く
+  const top=hdrH(),bottom=innerHeight-$('#sbar').offsetHeight,r=t.getBoundingClientRect();
+  scrollTo(0,r.top+scrollY-top-Math.max(0,(bottom-top-r.height)/2));
+  t.classList.add('jumped');setTimeout(()=>t.classList.remove('jumped'),2500);
+  fillAhead();updLabel();showLabel();
+}
 $('#lbx').onclick=closeLb;
 function step(d){
   const k=cur+d;if(cur<0||k<0||k>=filtered.length)return;
