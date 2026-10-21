@@ -1,6 +1,6 @@
 # gyazo-tycoon-viewer
 
-gyazo-tycoon の外出先用ビューア(静的ページ1枚、`index.html` + `crypto.js`)。GitHub Pages に置く。データ・鍵は含まない。概要は README.md、詳細は docs/ を参照。
+gyazo-tycoon の外出先用ビューア(静的ページ1枚。`index.html` + `app.js`(本体のコード) + `crypto.js`)。GitHub Pages に置く。データ・鍵は含まない。概要は README.md、詳細は docs/ を参照。
 
 ## ドキュメント運用ルール
 - 作業開始時は CLAUDE.md と README の概要だけ読む。docs/ は「触る前に読む」に従い、該当作業のときだけ読む。CHANGELOG は全文を読まず直近のエントリだけ見る。
@@ -17,3 +17,4 @@ gyazo-tycoon の外出先用ビューア(静的ページ1枚、`index.html` + `c
 - imgur アップロード(docs/technical-notes.md): 匿名アップロードは imgur 側に管理画面がなく、deletehash を持つ端末以外からは消せない。重複チェックはしない。
 - オフライン(docs/features.md, docs/technical-notes.md): `sw.js` のナビゲーションは実URLではなく固定キー `'index.html'` で読み書きする(実URLに戻すと、完全終了→機内モードで起動したときにページが開けない)。新しい JS/CSS を足したら `sw.js` の `SHELL_FILES` に追加する。一覧の控え(`gt-index-v1` の `/__idx/_*`)は、通信エラー・タイムアウト・429/5xx のときだけ使う(認可切れは控えに逃げない)。暗号化画像のサムネ・原寸はオフラインでは見られない(復号後をキャッシュしない方針のため)。
 - 端末キャッシュ(docs/technical-notes.md): iOS はタブのままだと7日触らないとサイトデータを消すことがある。ホーム画面に追加して使う。
+- CSP と外部 script(docs/technical-notes.md「CSP」): `index.html` の CSP meta は インライン script 禁止・通信先を Dropbox/imgur/Gyazo に限定している。外部 API・CDN・インライン script を足す時は CSP も同時に更新し、外部 script には SRI を付ける。heic2any のため `'unsafe-eval'` が入っている(経緯: [docs/decisions/csp-meta-and-app-js-split.md](docs/decisions/csp-meta-and-app-js-split.md))。
