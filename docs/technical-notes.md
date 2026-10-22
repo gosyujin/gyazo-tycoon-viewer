@@ -8,6 +8,19 @@ README.md から移動した注意事項。
 - 同じ画像を再度アップロードしても重複チェックはしない。
 - iOS はタブのままだと7日触らないとサイトデータを消すことがある。ホーム画面に追加して使うと残りやすい。
 
+- imgur の方針: Client-ID は各端末の localStorage(案B)。アップロードの履歴は持たない(deletehash だけ画像ごとに残す)。gif は上げる、mp4 は非対応、gif 以外は 20MB まで。上限を超える画像のブラウザ内リサイズは作らない(静止画は需要がなく、gif は難しいので見送り。2026-10-18 の整理)。ボタンはメモ欄から離して置く(誤爆防止)。
+- Gyazo へのアップロードは `access_token` と `imagedata` だけを送る。`access_policy` を指定せず、EXIF(GPS 含む)も除去しない(gyazo-tycoon 本体の `reupload.py` は指定・除去する)。Gyazo 側の既定は「新規アップロードは自分のみ」(2026-10-05 に変更)なので、公開プロジェクトの Scrapbox に貼ると見えない可能性がある。凍結中のため直さない。経緯と未決の点は gyazo-tycoon の `docs/technical-notes.md` の「既知の制限」。
+
+## 公開・デプロイ(2026-10-18 のメモより。設定画面では再確認していない)
+
+- 本番の URL は `https://note.gosyujin.com/gyazo-tycoon-viewer/`(`github.io` からのリダイレクト先)。Dropbox App Console の Redirect URI もこの URL。README の `https://<user>.github.io/...` は例のまま。
+- GitHub Pages の公開元は「GitHub Actions」(2026-10-05 に手で切り替えた)。`main` への push で `.github/workflows/deploy-pages.yml` が走り、反映まで 1〜2 分。
+- `note.gosyujin.com` には複数の個人アプリが同一オリジンで同居し、`localStorage` を共有する(scrapbox-tycoon の PAT、Gist 用の PAT、このアプリの Dropbox トークンなど)。同居アプリの1つで XSS が起きると全部読み取られる。CSP と `app.js` の分離はこのための PR #10(未マージ)。
+
+## Dropbox には書かない
+
+閲覧履歴・メモは ⚙「閲覧履歴・メモを書き出す」で JSON を作り、共有シートから Dropbox の `アプリ/gyazo-tycoon/visits/` に自分で置く。Mac 側(`import_visits.py`)が読んで反映する。「書き込み権限が必要なのは嫌」と 2026-10-05 に明言があったため、Dropbox のスコープは読み取り専用のままにする。書き込みを要する機能(自動同期など)は、提案する前にユーザーに聞く。
+
 ## Service Worker(sw.js)
 
 - ナビゲーションは固定キー `'index.html'` で読み書きする(hateb-tycoon の `docs/decisions/sw-navigate-fixed-key.md` と同じ理由)。認可の戻り(`?code=` / `?error=`)はキャッシュしない。`build-info.js?nc=…`(起動時の更新確認)は素通し。

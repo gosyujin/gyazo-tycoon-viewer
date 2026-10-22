@@ -12,8 +12,10 @@ gyazo-tycoon の外出先用ビューア(静的ページ1枚、`index.html` + `c
 
 ## 触る前に読む
 - 暗号化した画像(docs/features.md): 形式は gyazo-tycoon 本体の `seal.py` と一致させる(`crypto.js`: PBKDF2-SHA256 → AES-256-GCM)。復号した画像・サムネイルはキャッシュに保存せずメモリのみ。暗号化画像は imgur アップロード不可・先読みもしない。
-- 役割(gyazo-tycoon の docs/decisions/phone-roles.md): スマホの閲覧・検索・メモのメイン。足す機能は「スマホでの閲覧・検索に必要か」で決め、判定・管理系は本体の `/gallery` 側に置く。
+- 役割(gyazo-tycoon の docs/decisions/phone-roles.md): **凍結中(2026-10-22〜)**。新機能は gyazo-tycoon 本体だけに足し、このリポジトリは既存機能の不具合の修正だけ。残す理由はオフライン・圏外で使えること(本体は HTTP のため Service Worker が使えない)。判定・管理系は本体の `/judge`。
 - 秘密の扱い(docs/features.md): Gyazo トークン・imgur Client-ID・Dropbox の鍵は端末の localStorage / IndexedDB にだけ置き、リポジトリに含めない。
 - imgur アップロード(docs/technical-notes.md): 匿名アップロードは imgur 側に管理画面がなく、deletehash を持つ端末以外からは消せない。重複チェックはしない。
 - オフライン(docs/features.md, docs/technical-notes.md): `sw.js` のナビゲーションは実URLではなく固定キー `'index.html'` で読み書きする(実URLに戻すと、完全終了→機内モードで起動したときにページが開けない)。新しい JS/CSS を足したら `sw.js` の `SHELL_FILES` に追加する。一覧の控え(`gt-index-v1` の `/__idx/_*`)は、通信エラー・タイムアウト・429/5xx のときだけ使う(認可切れは控えに逃げない)。暗号化画像のサムネ・原寸はオフラインでは見られない(復号後をキャッシュしない方針のため)。
+- 公開・デプロイ(docs/technical-notes.md): 本番の URL は `https://note.gosyujin.com/gyazo-tycoon-viewer/`(Dropbox の Redirect URI もこれ)。Pages の公開元は GitHub Actions。
+- Dropbox には書かない(docs/technical-notes.md): スコープは読み取り専用のまま。書き込みを要する機能は、提案する前にユーザーに聞く。
 - 端末キャッシュ(docs/technical-notes.md): iOS はタブのままだと7日触らないとサイトデータを消すことがある。ホーム画面に追加して使う。
