@@ -15,7 +15,7 @@ README.md から移動した注意事項。
 
 - 本番の URL は `https://note.gosyujin.com/gyazo-tycoon-viewer/`(`github.io` からのリダイレクト先)。Dropbox App Console の Redirect URI もこの URL。README の `https://<user>.github.io/...` は例のまま。
 - GitHub Pages の公開元は「GitHub Actions」(2026-10-05 に手で切り替えた)。`main` への push で `.github/workflows/deploy-pages.yml` が走り、反映まで 1〜2 分。
-- `note.gosyujin.com` には複数の個人アプリが同一オリジンで同居し、`localStorage` を共有する(scrapbox-tycoon の PAT、Gist 用の PAT、このアプリの Dropbox トークンなど)。同居アプリの1つで XSS が起きると全部読み取られる。CSP と `app.js` の分離はこのための PR #10(未マージ)。
+- `note.gosyujin.com` には複数の個人アプリが同一オリジンで同居し、`localStorage` を共有する(scrapbox-tycoon の PAT、Gist 用の PAT、このアプリの Dropbox トークンなど)。同居アプリの1つで XSS が起きると全部読み取られる。CSP と `app.js` の分離はこのための PR #10(マージ済み。下の「CSP(meta)と外部 script」と「未検証」を参照)。
 
 ## Dropbox には書かない
 
@@ -27,6 +27,13 @@ README.md から移動した注意事項。
 - 更新確認(`checkUpdate`)の `?v=<sha>` への移動は SW 導入後もそのまま動く(ナビゲーションは常にネットワーク優先)。
 - Claude Code 等のサンドボックス化されたブラウザでは `navigator.serviceWorker.register()` が失敗して SW を確認できない。SW のロジックは Node で模擬の `caches`/`fetch` を作って確かめ、実機は本番オリジンで `caches.keys()` を見る。
 
+## CSP(meta)と外部 script
+
+- `index.html` の CSP は `script-src 'self'`(インライン script・`on*=` は不可。本体のコードは `app.js`)と、`connect-src` を Dropbox / imgur / Gyazo に限定している。**外部 API・CDN・インライン script を足す・変える時は CSP も同時に更新する**(忘れると本番でだけブロックされる。コンソールに `Refused to ...`)。
+- 外部 script(heic2any)は `integrity`(sha384)+`crossorigin` 付きで読む。バージョンを上げる時は URL・ハッシュ・CSP の `script-src` の 3 か所を揃える(`curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A`)。
+- `'unsafe-eval'` は heic2any のため(`'wasm-unsafe-eval'` では動かない)。HEIC の変換を gyazo-tycoon 本体側に移せば外せる。経緯: [decisions/csp-meta-and-app-js-split.md](decisions/csp-meta-and-app-js-split.md)
+- `app.js` は deploy 時に `?v=<sha>` が付く(`sw.js` の `SHELL_FILES` は付かない形で保存。`build-info.js` と同じ扱い)。新しい JS を足したら `SHELL_FILES` にも追加する。
+
 ## 未検証
 
 - オフライン対応(sw.js・一覧の控え)は、模擬の Dropbox でのアプリ側(通信不能で起動→一覧表示→検索、オンライン復帰で読み直し)と、Node での SW のロジックだけ確認した。実機の iOS(ホーム画面の PWA)で、機内モードの完全終了→再起動後に、一覧が「· オフライン」付きで出ること・検索が効くこと・キャッシュ済みのサムネイルと原寸が出ること・オンライン復帰で自動で読み直すことは未確認(ページが開くことと、メモの追加は確認済み)。
@@ -37,3 +44,5 @@ README.md から移動した注意事項。
 - 拡大表示のメモ欄(`#lbt`)は、実機の iOS Safari でキーボードを出したときの見え方(下に固定した説明欄がキーボードに隠れないか)と、キーボードを閉じたときに保存されるか(focusout)を確認していない。
 - 検索の正規化(`normSearch`)は、OCR 本文の空白(「表わし  ます」が「表わします」で当たる)だけ実機で確認した。改行で割れた語、ダッシュ・小書き仮名・カ/力などの同一視、一覧が多いときの初回検索の体感は未確認
 - 拡大表示の日付からの一覧ジャンプ(`jumpToItem`)は、実機でジャンプ自体が機能することを1回確認した。ジャンプ後の位置(ヘッダー・検索フッターを避けた中央)、最近開いた順・閲覧数順・古い順からの動き、暗号化した画像からのジャンプは未確認。
+
+- CSP と `app.js` 分離(2026-10-21)は、ローカルの staging 再現と CSP の挙動確認までで、実機は未確認。実機で見るもの: Dropbox 認可→一覧・サムネ、暗号化画像(パスフレーズ)、**HEIC の表示(heic2any の SRI + CSP)**、Service Worker のキャッシュ(`app.js` が `SHELL_FILES` に入ったこと)、更新確認。確認できたらこの行を削除し CHANGELOG に「確認済み」と残す。

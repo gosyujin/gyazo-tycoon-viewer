@@ -1,8 +1,8 @@
 /**
  * オフライン(機内モード・圏外)でもページが開けるようにするための Service Worker(hateb-tycoon / scrapbox-tycoon と同じ方式)。
  *
- * - アプリ本体(index.html / crypto.js / build-info.js / favicon.png)だけを扱う。
- *   一覧・サムネイル・原寸は Dropbox(別オリジン)から index.html 側のコードが取り、
+ * - アプリ本体(index.html / crypto.js / app.js / build-info.js / favicon.png)だけを扱う。
+ *   一覧・サムネイル・原寸は Dropbox(別オリジン)から app.js 側のコードが取り、
  *   Cache Storage(gt-index-v1 / gt-thumb-v1 / gt-full-v1 / gt-anim-v1)に残している。ここでは触らない。
  * - 「まずネットワーク、失敗したら前回キャッシュ」。オンライン中は常に最新、オフライン時だけキャッシュへ落ちる。
  *   電波が不安定で fetch が失敗も成功もせずハングすると待たされるので、NETWORK_TIMEOUT_MS を過ぎたらキャッシュを先に返す。
@@ -17,7 +17,7 @@
  */
 const CACHE_VERSION = '__BUILD_SHA__';
 const SHELL_CACHE = `gyazo-tycoon-viewer-shell-${CACHE_VERSION}`;
-const SHELL_FILES = ['index.html', 'crypto.js', 'build-info.js', 'favicon.png'];
+const SHELL_FILES = ['index.html', 'crypto.js', 'app.js', 'build-info.js', 'favicon.png'];
 const NETWORK_TIMEOUT_MS = 6000;
 
 self.addEventListener('install', (event) => {
@@ -34,7 +34,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      // 本体のキャッシュだけ消す(gt-* は index.html 側が使う端末キャッシュなので消さない)
+      // 本体のキャッシュだけ消す(gt-* は app.js 側が使う端末キャッシュなので消さない)
       await Promise.all(
         keys.filter((k) => k.startsWith('gyazo-tycoon-viewer-shell-') && k !== SHELL_CACHE).map((k) => caches.delete(k))
       );
