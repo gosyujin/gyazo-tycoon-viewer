@@ -360,9 +360,14 @@ async function exportVisits(){
   if(!Object.keys(out).length&&!Object.keys(nout).length){alert('まだ開いた画像も編集したメモもありません');return}
   const name=`gyazo-visits-${DEVICE}.json`;
   const file=new File([JSON.stringify({v:1,device:DEVICE,exported:Date.now(),visits:out,notes:nout})],name,{type:'application/json'});
+  const download=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=name;document.body.append(a);a.click();a.remove()};
   try{
-    if(navigator.canShare&&navigator.canShare({files:[file]}))await navigator.share({files:[file]});  // 共有シート →「ファイルに保存」→ Dropbox の gyazo-visits
-    else{const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=name;document.body.append(a);a.click();a.remove()}
+    let shared=false;
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      try{await navigator.share({files:[file]});shared=true}  // 共有シート →「ファイルに保存」→ Dropbox の gyazo-visits
+      catch(e){if(e.name==='AbortError')throw e}  // キャンセル以外(PC の Chrome で NotAllowedError 等)はダウンロードに切り替える
+    }
+    if(!shared)download();
     LSset('gt_exported',String(Date.now()));
   }catch(e){if(e.name!=='AbortError')alert('書き出しに失敗しました: '+e.message)}
   showBuild();
